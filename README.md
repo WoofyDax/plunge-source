@@ -1,4 +1,4 @@
-> Source published so testers can review what Plunge does before installing it. All rights reserved for now; no licence is granted to copy or redistribute. Questions: support@plungevr.com
+> **Plunge is a closed-source project.** This copy of the source is public only temporarily, so Cas and Chary can review it before testing. It will be taken down again afterwards. All rights reserved: no licence is granted to copy, modify, run or redistribute it. Questions: support@plungevr.com
 
 # Plunge: any game, in VR
 
