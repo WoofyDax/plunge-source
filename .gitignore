@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+build/
+build-cli/
+*.spec
+dist/
+*.log
+deploy/.env
+hub-data/
+*.pfx
+*.p12
+*.key
+*.snk

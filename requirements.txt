@@ -1,0 +1,14 @@
+# Build and run Plunge from source. Exact versions, so every build is reproducible. These are the versions this release was
+# built and tested with. Update them on purpose, then re-run all the tests and check pip-audit / the projects' advisories.
+pywebview==6.2.1
+pythonnet==3.2.1
+clr_loader==0.3.1
+cffi==2.1.1
+bottle==0.13.4
+proxy_tools==0.1.0
+pyinstaller==6.15.0
+pyinstaller-hooks-contrib==2025.8
+altgraph==0.17.4
+pefile==2023.2.7
+packaging==25.0
+pillow==11.3.0

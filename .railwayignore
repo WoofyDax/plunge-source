@@ -1,0 +1,16 @@
+dist/
+build/
+site/
+installer/
+assets/
+legal/
+tools/
+ui/
+test_*.py
+*.spec
+*.exe
+.env
+deploy/.env
+__pycache__/
+*.pyc
+.git/

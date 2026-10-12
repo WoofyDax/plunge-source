@@ -1,0 +1,62 @@
+﻿[
+    {
+        "slug":  "veloren-sunset",
+        "game":  "Veloren",
+        "artist":  "Antimundo",
+        "license":  "CC0",
+        "licenseUrl":  "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "page":  "https://commons.wikimedia.org/wiki/File:Veloren-0.17-screenshot-sunset.jpg",
+        "w":  1280,
+        "h":  720
+    },
+    {
+        "slug":  "veloren-horizon",
+        "game":  "Veloren",
+        "artist":  "Antimundo",
+        "license":  "CC0",
+        "licenseUrl":  "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+        "page":  "https://commons.wikimedia.org/wiki/File:Veloren-0.17-screenshot-horizon.jpg",
+        "w":  1280,
+        "h":  720
+    },
+    {
+        "slug":  "xonotic",
+        "game":  "Xonotic",
+        "artist":  "Xonotic developers",
+        "license":  "GPL",
+        "licenseUrl":  "http://www.gnu.org/licenses/gpl.html",
+        "page":  "https://commons.wikimedia.org/wiki/File:Xonotic_0.8.2_rocket.jpg",
+        "w":  1280,
+        "h":  720
+    },
+    {
+        "slug":  "supertuxkart",
+        "game":  "SuperTuxKart",
+        "artist":  "STK dev team",
+        "license":  "CC BY 3.0",
+        "licenseUrl":  "https://creativecommons.org/licenses/by/3.0",
+        "page":  "https://commons.wikimedia.org/wiki/File:Supertuxkart-0.9-screenshot-2.jpg",
+        "w":  1280,
+        "h":  687
+    },
+    {
+        "slug":  "0ad",
+        "game":  "0 A.D.",
+        "artist":  "0 A.D. Developers",
+        "license":  "CC BY-SA 3.0",
+        "licenseUrl":  "https://creativecommons.org/licenses/by-sa/3.0",
+        "page":  "https://commons.wikimedia.org/wiki/File:0_A.D._Alpha_23.jpg",
+        "w":  1280,
+        "h":  716
+    },
+    {
+        "slug":  "minetest",
+        "game":  "Minetest (Luanti)",
+        "artist":  "cisoun",
+        "license":  "CC BY-SA 4.0",
+        "licenseUrl":  "https://creativecommons.org/licenses/by-sa/4.0",
+        "page":  "https://commons.wikimedia.org/wiki/File:Minetest_screenshot_Sans_titre2.jpg",
+        "w":  1280,
+        "h":  706
+    }
+]

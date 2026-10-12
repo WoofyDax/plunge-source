@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Nothing from the web can run here: only this page's own inline code, images over https, no network calls from the page,
+     no frames, no plugins, no forms. The page talks to the app through its private bridge, not the network. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src https: data:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Plunge</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2 5.6-5.6 2 2-5.6z"/></symbol>
+    <symbol id="i-stack" viewBox="0 0 24 24"><path d="M12 3l9 4.8-9 4.8-9-4.8z"/><path d="M3 12.2l9 4.8 9-4.8"/><path d="M3 16.6l9 4.8 9-4.8"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.5 20.5L16 16"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6"/><path d="M16 4.6a3.6 3.6 0 010 6.8M18.5 14.8c1.7.7 2.8 2.4 3 5.2"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></symbol>
+    <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="4"/><path d="M9.5 4.5v15"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.2l11 6.8-11 6.8z" fill="currentColor"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+    <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
+    <symbol id="i-left" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7.5-4.6-9-9.4C2 7.3 4 4.8 6.8 4.8c1.9 0 3.5 1 5.2 3 1.7-2 3.3-3 5.2-3C20 4.8 22 7.3 21 10.6c-1.5 4.8-9 9.4-9 9.4z"/></symbol>
+    <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></symbol>
+    <symbol id="i-vr" viewBox="0 0 24 24"><path d="M3 9.5A3 3 0 016 6.5h12a3 3 0 013 3v5a3 3 0 01-3 3h-3.2c-1 0-1.6-.6-2-1.4l-.3-.6a1 1 0 00-1 0l-.3.6c-.4.8-1 1.4-2 1.4H6a3 3 0 01-3-3z"/></symbol>
+    <symbol id="i-pad" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M8 10.5v4M6 12.5h4"/><circle cx="15.5" cy="11.5" r=".9" fill="currentColor"/><circle cx="18" cy="13.5" r=".9" fill="currentColor"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4.5 15v3.5a2 2 0 002 2h11a2 2 0 002-2V15"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="3"/><path d="M15.5 8.5V6.5a3 3 0 00-3-3h-6a3 3 0 00-3 3v6a3 3 0 003 3h2"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l.8 12a2 2 0 002 1.9h5.4a2 2 0 002-1.9l.8-12"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l7.5 3v5.5c0 4.5-3.2 8-7.5 9.5-4.3-1.5-7.5-5-7.5-9.5V6z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/></symbol>
+    <symbol id="i-person" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.8"/><path d="M4.5 20.5c.8-4 3.7-6 7.5-6s6.7 2 7.5 6"/></symbol>
+  </defs>
+</svg>
+
+<div class="app">
+  <header class="top">
+    <div class="top-l">
+      <button class="icon-btn" id="railToggle" aria-label="Toggle sidebar"><svg class="i"><use href="#i-sidebar"/></svg></button>
+      <div class="wordmark" aria-label="Plunge"><svg class="wm-mark" viewBox="0 0 256 256" role="img" aria-label="Plunge"><defs><linearGradient id="app" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2aa0ff"/><stop offset="1" stop-color="#0a4dff"/></linearGradient></defs><rect width="256" height="256" rx="62" fill="url(#app)"/><path d="M88 202V56h46a42 42 0 0 1 0 84H88" fill="none" stroke="#fff" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"/></svg><svg class="wm-word" viewBox="-8 -8 422 96" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Plunge"><path transform="translate(0 0)" d="M8 72V8H30a18 18 0 0 1 0 36H8"/><path transform="translate(70 0)" d="M8 8V72H48"/><path transform="translate(140 0)" d="M8 8V52a20 20 0 0 0 40 0V8"/><path transform="translate(210 0)" d="M8 72V8L48 72V8"/><path transform="translate(280 0)" d="M43.3 19.4A20 32 0 1 0 47.8 44H30"/><path transform="translate(350 0)" d="M48 8H8V72H48M8 40H38"/></svg></div>
+    </div>
+    <label class="search">
+      <svg class="i" style="width:19px;height:19px"><use href="#i-search"/></svg>
+      <input id="search" placeholder="Search games and VR builds" autocomplete="off" spellcheck="false" aria-label="Search">
+      <kbd>/</kbd>
+    </label>
+    <div class="top-r">
+      <button class="icon-btn" id="joinOpen" aria-label="Join a friend's game" title="Join a friend with a code"><svg class="i"><use href="#i-users"/></svg></button>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Main">
+    <button class="nav on" data-page="discover" aria-label="Discover"><svg class="i"><use href="#i-compass"/></svg><span>Discover</span></button>
+    <button class="nav" data-page="library" aria-label="Library"><svg class="i"><use href="#i-stack"/></svg><span>Library</span></button>
+    <button class="nav" data-page="create" aria-label="Create"><svg class="i"><use href="#i-plus"/></svg><span>Create</span></button>
+    <div class="grow"></div>
+    <button class="nav" id="settingsOpen" aria-label="Settings"><svg class="i"><use href="#i-gear"/></svg><span>Settings</span></button>
+    <button class="nav" id="accountOpen" aria-label="Account"><span class="avatar" id="avatar">?</span><span id="accountLabel">Sign in</span></button>
+  </nav>
+
+  <main class="main" id="main">
+    <section class="page on" id="page-discover">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <h1 class="big" style="margin:0">Featured</h1>
+        <button class="btn blue" id="publishOpen"><svg class="i"><use href="#i-up"/></svg>Publish a build</button>
+      </div>
+      <div class="hero" id="hero"></div>
+      <div id="discoverRows"></div>
+    </section>
+
+    <section class="page" id="page-library">
+      <h1 class="big">Library</h1>
+      <div class="chips" id="libFilters">
+        <button class="chip on" data-f="all">All</button>
+        <button class="chip" data-f="custom">My VR games</button>
+        <button class="chip" data-f="vr">Built-in VR</button>
+        <button class="chip" data-f="quick">Quick try</button>
+        <button class="chip" data-f="blocked">Blocked</button>
+        <button class="chip" id="missingBtn" title="See what Plunge looked at, add a folder, or scan your drives"><svg class="i"><use href="#i-search"/></svg>Missing a game?</button>
+        <button class="chip" id="addFolder" title="Add a folder that holds a game, or a folder of games" style="margin-left:auto"><svg class="i"><use href="#i-plus"/></svg>Add a game folder</button>
+      </div>
+      <div id="libBody"></div>
+    </section>
+
+    <section class="page" id="page-create">
+      <h1 class="big" id="createTitle">Create</h1>
+      <div id="createBody"></div>
+    </section>
+
+    <section class="page" id="page-search">
+      <h1 class="big" id="searchTitle">Search</h1>
+      <div id="searchBody"></div>
+    </section>
+  </main>
+</div>
+
+<dialog id="sheet"><div class="sheet" id="sheetBody"></div></dialog>
+
+<dialog id="joinDlg"><div class="joinbox">
+  <h3>Join a friend</h3>
+  <p class="muted">Paste the join code or link your friend shared. You need the same game and the same VR build.</p>
+  <input id="joinCode" class="input" placeholder="Code or plunge:// link" autocomplete="off" spellcheck="false" aria-label="Join code">
+  <div class="actions"><button class="btn dark" id="joinCancel">Cancel</button><button class="btn blue" id="joinGo"><svg class="i"><use href="#i-users"/></svg>Join</button></div>
+</div></dialog>
+
+<dialog id="promptDlg"><div class="joinbox" style="width:min(720px,94vw)">
+  <h3>Copy this brief</h3>
+  <p class="muted">Paste it into Claude Code or Codex.</p>
+  <textarea id="promptText" class="big" readonly spellcheck="false" aria-label="Brief for your coding agent"></textarea>
+  <div class="actions"><button class="btn dark" id="promptClose">Close</button><button class="btn blue" id="promptCopy"><svg class="i"><use href="#i-copy"/></svg>Copy</button></div>
+</div></dialog>
+
+<dialog id="settingsDlg"><div class="joinbox">
+  <h3>Settings</h3>
+  <ul class="facts" id="settingsFacts"></ul>
+  <div class="field"><label class="lbl" for="headsetSel">Your VR</label><select id="headsetSel" class="input"></select></div>
+  <div class="toggle" id="adToggle" role="switch" tabindex="0" aria-checked="true"><span>Show sponsored cards</span><span class="sw"></span></div>
+  <p class="muted" style="font-size:13px" id="adNote"></p>
+  <div class="toggle" id="linkToggle" role="switch" tabindex="0" aria-checked="false"><span>Open plunge:// join links with Plunge</span><span class="sw"></span></div>
+  <div class="chips" id="legalLinks"></div>
+  <div class="chips"><button class="chip" id="updateBtn">Check for updates</button><button class="chip" id="logsBtn">Open log folder</button></div>
+  <p class="muted" style="font-size:13px">Point Plunge at your own hub or lobby with the PLUNGE_HUB and PLUNGE_LOBBY environment variables.</p>
+  <div class="actions"><button class="btn dark" id="settingsClose">Close</button></div>
+</div></dialog>
+
+<dialog id="publishDlg"><div class="joinbox" style="width:min(620px,94vw)" id="publishBody"></div></dialog>
+
+<dialog id="accountDlg"><div class="joinbox" style="width:min(460px,94vw)" id="accountBody"></div></dialog>
+
+<dialog id="agentDlg"><div class="joinbox" style="width:min(680px,94vw)" id="agentBody"></div></dialog>
+
+<dialog id="trustDlg"><div class="joinbox" style="width:min(560px,94vw)">
+  <h3>This build runs extra programs</h3>
+  <p class="muted">It ships third-party files that the game loads and runs on your PC. Only continue if you trust where this build came from.</p>
+  <p id="trustSummary" style="font-weight:700"></p>
+  <div class="scrolly"><ul class="facts" id="trustList"></ul></div>
+  <div class="actions"><button class="btn dark" id="trustNo">Cancel</button><button class="btn blue" id="trustYes"><svg class="i"><use href="#i-shield"/></svg>I trust it, continue</button></div>
+</div></dialog>
+
+<dialog id="welcomeDlg"><div class="joinbox" style="width:min(520px,94vw)">
+  <h3>Welcome to Plunge</h3>
+  <ol class="facts" style="list-style:decimal;padding-left:20px;gap:10px">
+    <li style="display:list-item;border:0"><b>Pick a game you own.</b> Plunge finds the engine and checks for built-in VR.</li>
+    <li style="display:list-item;border:0"><b>Make it yours.</b> Set your controls and comfort, then copy the brief to Claude Code or Codex to build the VR version.</li>
+    <li style="display:list-item;border:0"><b>Press Play.</b> Plunge installs it, and can remove it and restore your files any time.</li>
+  </ol>
+  <div class="field"><label class="lbl">Which VR do you use?</label><div class="chips" id="headsetChips" role="radiogroup" aria-label="Your VR headset"></div></div>
+  <p class="muted" style="font-size:13px">Games with anti-cheat are never modified, and builds never contain a game’s own files.</p>
+  <div class="actions"><button class="btn blue" id="welcomeGo">Get started</button></div>
+</div></dialog>
+
+<dialog id="reportDlg"><div class="joinbox" style="width:min(640px,94vw)">
+  <h3>Missing a game?</h3>
+  <p class="muted">This is everything Plunge looked at. If your game isn't covered, add its folder or scan your drives.</p>
+  <div class="scrolly"><ul class="facts" id="reportList"></ul></div>
+  <div class="actions"><button class="btn dark" id="reportClose">Close</button><button class="btn dark" id="reportAdd"><svg class="i"><use href="#i-plus"/></svg>Add a game folder</button>
+    <button class="btn blue" id="reportDeep"><svg class="i"><use href="#i-search"/></svg>Scan my drives</button>
+    <button class="btn dark" id="reportDeeper" title="Slower: also looks inside folders nested deeper"><svg class="i"><use href="#i-search"/></svg>Look deeper</button></div>
+  <p class="muted" id="reportNote" style="font-size:13px"></p>
+</div></dialog>
+
+<div id="toast" class="toast" role="status"></div>
+<script src="app.js"></script>
+</body>
+</html>

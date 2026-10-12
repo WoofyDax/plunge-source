@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://plungevr.com/sitemap.xml
