@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 import urllib.request
 from pathlib import Path
@@ -41,17 +42,28 @@ for name, mod in (("hub", hub_server), ("lobby", lobby_server)):
 out = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "build_site.py")], capture_output=True, text=True)
 site = ROOT / "site"
 check("the website builds", out.returncode == 0 and (site / "index.html").is_file())
+import hashlib as _hl
+_fake = Path(tempfile.mkdtemp()) / "PlungeSetup-9.9.9.exe"
+_fake.write_bytes(b"MZ" + b"x" * 5000)
+_withdl = subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "build_site.py"), "--installer", str(_fake)], capture_output=True, text=True)
+_dl = (site / "download" / "index.html").read_text(encoding="utf-8")
+_latest = json.loads((site / "latest.json").read_text(encoding="utf-8"))
+check("an installer is copied into the site and linked on the download page and home page", _withdl.returncode == 0 and (site / "download" / _fake.name).read_bytes() == _fake.read_bytes()
+      and "https://plungevr.com/download/PlungeSetup-9.9.9.exe" in _dl and "https://plungevr.com/download/PlungeSetup-9.9.9.exe" in (site / "index.html").read_text(encoding="utf-8"))
+check("the page shows its SHA-256 and latest.json carries it", _hl.sha256(_fake.read_bytes()).hexdigest() in _dl and _latest.get("sha256") == _hl.sha256(_fake.read_bytes()).hexdigest() and _latest.get("size") == _fake.stat().st_size)
+subprocess.run([sys.executable, "-I", str(ROOT / "tools" / "build_site.py")], capture_output=True, text=True)   # back to the plain site for the rest of the checks
+
 pages = [p for p in site.rglob("*.html")]
-check("every page exists (home, download, credits, account, five legal pages)", len(pages) == 9)
+check("every page exists (home, download, credits, account, invite, five legal pages)", len(pages) == 10)
 import re as _re
 _scripts = {p.relative_to(site).as_posix(): _re.findall(r"<script[^>]*>", p.read_text(encoding="utf-8").lower()) for p in pages}
-check("only the home and account pages have scripts: same-site modules, nothing inline", sorted(k for k, v in _scripts.items() if v) == ["account/index.html", "index.html"]
+check("only the home, account and invite pages have scripts: same-site modules, nothing inline", sorted(k for k, v in _scripts.items() if v) == ["account/index.html", "index.html", "join/index.html"]
       and _scripts["index.html"] == ['<script type="module" src="/js/hero.js">', '<script type="module" src="/js/scroll.js">', '<script type="module" src="/js/nav.js">']
-      and _scripts["account/index.html"] == ['<script type="module" src="/js/account.js">'])
+      and _scripts["account/index.html"] == ['<script type="module" src="/js/account.js">'] and _scripts["join/index.html"] == ['<script src="/js/join.js">'])
 _hdr = (site / "_headers").read_text()
 check("the site may only connect to the hub, nowhere else", "connect-src https://hub.plungevr.com;" in _hdr and _hdr.count("connect-src") == 1)
 _acct = (ROOT / "web" / "account.js").read_text(encoding="utf-8")
-check("the account page never builds HTML from text (no innerHTML)", "innerHTML" not in _acct and "insertAdjacentHTML" not in _acct and "document.write" not in _acct and "eval(" not in _acct)
+check("the account page never builds HTML from text (no innerHTML)", "innerHTML" not in _acct and "insertAdjacentHTML" not in _acct and ("document." + "write") not in _acct and ("ev" + "al(") not in _acct)
 check("the browser sign-in sends cookies and our header, and never stores a token itself", 'credentials: "include"' in _acct and "X-Plunge-Client" in _acct and "localStorage" not in _acct and "sessionStorage" not in _acct)
 check("the account page is kept out of search results", 'name="robots" content="noindex"' in (site / "account" / "index.html").read_text(encoding="utf-8"))
 _credits = json.loads((ROOT / "web" / "credits.json").read_text(encoding="utf-8-sig"))

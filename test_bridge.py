@@ -1,6 +1,7 @@
 """Calls the same Bridge the window uses, and runs the commands the brief tells an agent to run."""
 import json
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -54,7 +55,7 @@ check("brief forbids official servers", "official servers" in p)
 cmds = re.findall(r"^  (\".+? tool (?:game_info|search_profiles) \d+)$", p, re.M)
 check("brief lists agent commands", len(cmds) == 2)
 for c in cmds:
-    out = subprocess.run(c, shell=True, capture_output=True, text=True)
+    out = subprocess.run([a.strip('"') for a in shlex.split(c, posix=False)], capture_output=True, text=True)      # the exact command, as a list: no shell
     check("agent command works: " + c.split(" tool ")[1], out.returncode == 0 and json.loads(out.stdout) is not None)
 
 # clipboard round trip with unicode (caller restores the user's clipboard)

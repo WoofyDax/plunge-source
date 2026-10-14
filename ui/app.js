@@ -8,7 +8,7 @@ const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const S = { games: [], demo: false, sys: {}, disc: null, page: "discover", createApp: null, prefs: null,
             choices: null, active: {}, libFilter: "all", cur: null, polls: 0 };
 
-const ENGINE = { unreal: "Unreal", unity: "Unity", godot: "Godot", other: "Other engine" };
+const ENGINE = { unreal: "Unreal", unity: "Unity", godot: "Godot", emulator: "Emulator", other: "Other engine" };
 const TIER = { native: "Native VR", injected: "Injected 3D", theater: "Virtual screen" };
 // Steam artwork only exists for numeric Steam ids; other games get the letter tile
 const steam = (id, f) => /^\d+$/.test(String(id)) ? `https://cdn.cloudflare.steamstatic.com/steam/apps/${id}/${f}` : "";
@@ -131,13 +131,73 @@ function renderHero() {
   const show = i => { cur = i; els.forEach((e, j) => e.classList.toggle("on", j === i)); $$("button", dots).forEach((d, j) => d.classList.toggle("on", j === i)); };
   if (slides.length > 1) { h.append(dots); heroTimer = setInterval(() => show((cur + 1) % slides.length), 7000); }
 }
+/* open games: public ones listed, private ones joined with a code */
+function openGamesSection() {
+  const frag = document.createDocumentFragment();
+  const o = S.open, rows = (o && o.lobbies) || [];
+  frag.append(el("h2", { class: "sec" }, "Open games right now"));
+  const nameOf = l => { const g = S.games.find(x => x.appid === String(l.appid)); return g ? g.name : l.title; };
+  const cards = rows.map(l => el("div", { class: "lobby", style: "background:var(--card);padding:12px 14px;border-radius:14px" },
+    el("div", { style: "flex:1" }, el("b", {}, l.title), el("span", { class: "muted", style: "display:block;font-size:13px" }, `${nameOf(l)} · ${l.players}/${l.maxPlayers} players`)),
+    btn("blue sm", "Join", "users", () => joinCode(l.code))));
+  const code = el("input", { class: "input", placeholder: "Join code", "aria-label": "Private game join code", maxlength: "12", style: "width:130px;text-transform:uppercase" });
+  const priv = el("div", { class: "lobby", style: "background:var(--card);padding:12px 14px;border-radius:14px" },
+    el("div", { style: "flex:1" }, el("b", {}, "Private games"), el("span", { class: "muted", style: "display:block;font-size:13px" }, o ? `${o.privateCount} running now. Friends share a code or invite link with you.` : "Friends share a code or invite link with you.")),
+    code, btn("dark sm", "Join", "users", async () => { if (!code.value.trim()) return toast("Type the code first", true); await joinCode(code.value.trim()); }));
+  frag.append(el("div", { style: "display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))" }, ...cards, priv));
+  if (!rows.length) frag.append(el("p", { class: "muted", style: "font-size:14px;margin-top:8px" }, o ? "No public games are open right now. Host one from any multiplayer build and tick “List publicly”." : "Couldn’t reach the lobby service. Private codes still work once it’s back."));
+  return frag;
+}
+
+/* search + filters over every build on the hub */
+const DQ = { text: "", game: "", sort: "new", tier: "", mp: false, mine: false };
+const dqActive = () => !!(DQ.text.trim() || DQ.game || DQ.tier || DQ.mp || DQ.mine || DQ.sort !== "new");
+let dqTimer, dqSeq = 0;
+function discoverBar(results) {
+  const gameNames = new Map();
+  for (const r of [...((S.disc && S.disc.released) || []), ...((S.disc && S.disc.popular) || []), ...results]) {
+    const mine = S.games.find(g => g.appid === String(r.steamAppId));
+    gameNames.set(String(r.steamAppId), mine ? mine.name : r.title.replace(/\s+VR$/i, ""));
+  }
+  const inp = el("input", { class: "input", id: "dqText", placeholder: "Search VR builds, games or creators", "aria-label": "Search VR builds", value: DQ.text, style: "flex:1;min-width:220px",
+    on: { input: e => { DQ.text = e.target.value; clearTimeout(dqTimer); dqTimer = setTimeout(runDiscover, 300); } } });
+  const sel = (label, key, opts) => el("select", { class: "input", "aria-label": label, style: "width:auto", on: { change: e => { DQ[key] = e.target.value; runDiscover(); } } },
+    opts.map(([v, l]) => el("option", { value: v, selected: v === DQ[key] }, l)));
+  const chip = (label, key) => el("button", { class: "chip" + (DQ[key] ? " on" : ""), role: "switch", "aria-checked": String(!!DQ[key]), on: { click: () => { DQ[key] = !DQ[key]; runDiscover(); } } }, label);
+  return el("div", { style: "display:grid;gap:10px;margin:6px 0 14px" },
+    el("div", { style: "display:flex;gap:10px;flex-wrap:wrap" }, inp,
+      sel("Game", "game", [["", "All games"], ...[...gameNames].sort((a, b) => a[1].localeCompare(b[1])).map(([id, n]) => [id, n])]),
+      sel("Sort", "sort", [["new", "Newest"], ["popular", "Most popular"], ["liked", "Most liked"], ["featured", "Featured"]]),
+      sel("Type", "tier", [["", "Any type"], ["native", "Native VR"], ["injected", "Injected 3D"], ["theater", "Virtual screen"]])),
+    el("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" }, chip("Multiplayer", "mp"), chip("Only games I own", "mine"),
+      dqActive() ? el("button", { class: "chip", on: { click: () => { Object.assign(DQ, { text: "", game: "", sort: "new", tier: "", mp: false, mine: false }); runDiscover(); } } }, icon("x"), "Clear filters") : null));
+}
+async function runDiscover() {
+  const my = ++dqSeq;
+  if (!dqActive()) { S.dres = null; return renderDiscover(); }
+  let res = { profiles: [] }, err = null;
+  try { res = await api("discover_browse", DQ.text, DQ.game, DQ.sort, DQ.tier, DQ.mp, DQ.mine); } catch (e) { err = e.message; }
+  if (my !== dqSeq) return;                               // a newer search has started: ignore this answer
+  S.dres = { rows: res.profiles, err };
+  renderDiscover();
+  const t = $("#dqText"); if (t && document.activeElement !== t && DQ.text) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); }
+}
 function renderDiscover() {
   renderHero();
   const box = $("#discoverRows"); box.replaceChildren();
+  const results = (S.dres && S.dres.rows) || [];
+  box.append(discoverBar(results));
+  if (dqActive() && S.dres) {
+    if (S.dres.err) box.append(el("div", { class: "empty" }, S.dres.err));
+    else box.append(el("h2", { class: "sec" }, `${results.length} build${results.length === 1 ? "" : "s"}`),
+      results.length ? el("div", { class: "grid" }, results.map(profileCard)) : el("div", { class: "empty" }, el("b", {}, "No builds match"), "Try fewer filters, or build this one yourself."));
+    return;
+  }
   const d = S.disc || { released: [], popular: [] };
   if (d.hubError) box.append(el("p", { class: "muted", style: "margin-top:14px" }, "The Plunge hub is offline, so you’re seeing your own library. (" + d.hubError + ")"));
   const emptyHub = el("div", { class: "empty" }, el("b", {}, "No VR builds published yet"), "Make one for a game you love and share it with everyone.",
     btn("blue", "Create the first one", "plus", () => go("create")));
+  box.append(openGamesSection());
   box.append(rowSection("Just released", d.released.map(profileCard), d.hubError ? el("div", { class: "empty" }, "The hub is offline.") : emptyHub));
   if (d.popular.length) box.append(rowSection("Popular", d.popular.map(profileCard)));
   const vr = S.games.filter(g => vrLevel(g));
@@ -281,15 +341,17 @@ async function doInstallRuntime(quiet) {
 
 /* multiplayer */
 function mpBox(g, slug, mp) {
-  const box = el("div", { class: "box" }, el("h4", {}, icon("users"), `Play together · up to ${mp.maxPlayers}`));
+  const box = el("div", { class: "box" }, el("h4", {}, icon("users"), `Play together · up to ${mp.maxPlayers}`),
+    mp.kind === "added" ? el("p", { class: "muted", style: "font-size:13px" }, "Multiplayer added by this build for a single-player game. Experimental: expect rough edges.") : null,
+    el("p", { class: "muted", style: "font-size:13px" }, "Everyone needs their own copy of the game and this same build. Friends outside your home network need a way to reach you: a private network like Tailscale or ZeroTier, or the game’s own relay. Plunge can’t open your router."));
   const pub = el("input", { type: "checkbox", id: "mpPublic" });
   const out = el("div", { class: "actions" });
   const hostBtn = el("button", { class: "btn dark sm", on: { click: guard(async () => {
     hostBtn.disabled = true; toast("Starting the game and waiting for it to host…");
     try {
       const r = await api("host", g.appid, slug, pub.checked, null);
-      if (r.needAddress) { out.replaceChildren(addrForm(g, slug, pub, out)); }
-      else showCode(out, r.code, g);
+      if (r.needAddress) { out.replaceChildren(addrForm(g, slug, pub, out, r.suggest)); }
+      else showCode(out, r.code, g, r.network ? `Friends reach you through your ${r.network} address (${r.address}).` : null);
     } finally { hostBtn.disabled = false; }
   }) } }, icon("play"), "Host a game");
   box.append(el("div", { class: "actions" }, hostBtn, el("label", { class: "muted", style: "display:flex;gap:8px;align-items:center;font-size:14px" }, pub, "List publicly")), out);
@@ -298,36 +360,96 @@ function mpBox(g, slug, mp) {
     btn("dark sm", "Join", "users", () => joinCode(l.code)))))).catch(() => {});
   return box;
 }
-function showCode(out, code, g) {
+function showCode(out, code, g, note) {
   out.replaceChildren(el("span", { class: "code" }, code), btn("dark sm", "Copy", "copy", async () => { await api("copy_text", code); toast("Code copied"); }),
+    btn("dark sm", "Copy invite link", "copy", async () => { await api("copy_text", "https://plungevr.com/join/" + code); toast("Invite link copied. Friends who open it land in Plunge."); }),
+    note ? el("span", { class: "muted", style: "font-size:13px;flex-basis:100%" }, note) : null,
     btn("dark sm", "Stop", "x", async () => { await api("stop_hosting", g.appid); out.replaceChildren(); }));
 }
-function addrForm(g, slug, pub, out) {
-  const inp = el("input", { class: "input", placeholder: "host:port your game is hosting on", style: "flex:1" });
+function addrForm(g, slug, pub, out, suggest) {
+  const inp = el("input", { class: "input", placeholder: "host:port your game is hosting on", value: suggest || "", style: "flex:1" });
   return el("div", { class: "actions", style: "width:100%" }, inp, btn("blue sm", "Open lobby", null, async () => {
     const r = await api("publish_lobby", g.appid, slug, inp.value.trim(), pub.checked); showCode(out, r.code, g);
   }));
 }
-async function joinCode(code) { const r = await api("join", code); toast(r.steps[r.steps.length - 1] || "Joining…"); }
+/* join: get the build if you don't have it, ask about its third-party files, then start the game on the host's address */
+async function joinCode(code) {
+  const info = await api("join_info", code);
+  if (!info.ownsGame) throw new Error(`You need to own ${info.title || "this game"} first.`);
+  if (!info.haveBuild) { toast("Getting the build this game needs…"); await api("get_profile", info.profile); await refreshGames(false); }
+  const g = await api("game_info", info.appid), prof = g.profiles.find(p => p.slug === info.profile);
+  if (prof && prof.binaries.length && !prof.trusted) {
+    if (!(await askTrust(prof))) return;
+    await api("trust_profile", info.profile);
+  }
+  const r = await api("join", code);
+  if (r.manualAddress) { try { await api("copy_text", r.manualAddress); } catch (e) { /* the address is shown below anyway */ } toast(`Game started. Paste ${r.manualAddress} into its join screen (copied for you).`); }
+  else toast(r.steps[r.steps.length - 1] || "Joining…");
+}
 
 /* ---------- hub profile sheet ---------- */
+async function applyHub(r, onState) {
+  const game = S.games.find(g => g.appid === String(r.steamAppId));
+  if (!game) throw new Error("You need to own this game first. Add it to Steam, then it appears here.");
+  if (game.status === "blocked") throw new Error("This game uses anti-cheat, so Plunge never changes it.");
+  onState("Downloading…");
+  if (!r.owned) { await api("get_profile", r.id); r.owned = true; }
+  const info = await api("game_info", game.appid);
+  const prof = info.profiles.find(p => p.slug === r.id);
+  if (!prof) throw new Error("The download didn’t appear in your library. Try again.");
+  if (prof.binaries.length && !prof.trusted) {
+    onState("Waiting for your OK…");
+    if (!(await askTrust(prof))) throw new Error("Cancelled. Nothing was changed in your game.");
+    await api("trust_profile", r.id);
+  }
+  onState("Applying to your game…");
+  const out = await api("apply_build", game.appid, r.id);
+  await refreshGames(false);
+  return out;
+}
+function openGamesBox(r) {
+  const list = el("div", { style: "display:grid;gap:8px" }, el("span", { class: "muted", style: "font-size:14px" }, "Looking for open games…"));
+  api("lobbies", r.steamAppId).then(({ lobbies }) => {
+    const mine = lobbies.filter(l => l.profile === r.id);
+    list.replaceChildren(...(mine.length ? mine.map(l => el("div", { class: "lobby" }, el("span", {}, `${l.title} · ${l.players}/${l.maxPlayers}`),
+      btn("blue sm", "Join", "users", () => joinCode(l.code)))) : [el("span", { class: "muted", style: "font-size:14px" }, "No open games right now. Apply the build, then host one from the game’s page and send friends the invite link.")]));
+  }).catch(() => list.replaceChildren(el("span", { class: "muted", style: "font-size:14px" }, "Couldn’t reach the lobby service.")));
+  return el("div", { class: "box", style: "margin-top:14px" }, el("h4", {}, icon("users"), "Open games"), list);
+}
 async function openHubProfile(r) {
   const body = $("#sheetBody"); body.replaceChildren();
   const h = bg(el("div", { class: "sheet-hero" }), hero(r.steamAppId), head(r.steamAppId));
   h.append(el("div", {}, el("div", { class: "pair" }, bg(el("div", { class: "ic" }), cover(r.steamAppId)), el("span", { class: "plus" }, "+"), el("div", { class: "ic", style: "background:#168bff" }, icon("vr"))),
     el("h2", {}, r.title), el("div", { class: "by", style: "color:#d9d9de;margin-top:6px" }, "by " + (r.author || "unknown"))));
-  const add = btn("blue", r.owned ? "In your library" : "Add to Library", r.owned ? "check" : "plus", async () => {
-    await api("get_profile", r.id); r.owned = true; toast("Added to your library"); await refreshGames(); openHubProfile(r);
-  });
-  add.disabled = r.owned;
   const game = S.games.find(g => g.appid === String(r.steamAppId));
+  let applied = false;
+  try { applied = !!game && (await api("game_info", game.appid)).installedProfile === r.id; } catch (e) { /* the sheet still opens */ }
+  const status = el("div", { class: "muted", style: "font-size:14px;min-height:20px" });
+  const actions = el("div", { class: "actions" });
+  const draw = () => {
+    actions.replaceChildren();
+    if (!game) { actions.append(el("span", { class: "muted" }, "You don’t own this game yet. Once it’s in your Steam library, you can add this build with one click.")); }
+    else if (game.status === "blocked") { actions.append(el("span", { class: "muted" }, "This game uses anti-cheat, so Plunge never changes it.")); }
+    else if (applied) {
+      actions.append(btn("blue", "Play now", "play", async () => { status.textContent = "Starting the game…"; const o = await api("play", game.appid, r.id, "solo", null, null); status.textContent = o.steps[o.steps.length - 1]; }),
+        btn("dark", "Remove it from my game", "trash", async () => { await api("uninstall", game.appid); applied = false; await refreshGames(false); status.textContent = "Removed. Your game is back exactly as it was."; draw(); }));
+    } else {
+      const go = btn("blue", "Download and apply to my game", "down", async () => {
+        go.disabled = true;
+        try { await applyHub(r, t => { status.textContent = t; }); applied = true; status.textContent = "Done. It’s applied to your game. Press Play now to try it."; draw(); }
+        catch (e) { status.textContent = e.message; toast(e.message, true); go.disabled = false; }
+      });
+      actions.append(go);
+    }
+    actions.append(btn("dark", String(r.likes), "heart", async () => { if (!S.user) return needSignIn("Sign in to like builds"); await api("like", r.id); toast("Liked"); }));
+  };
+  draw();
   body.append(h, el("button", { class: "x", "aria-label": "Close", on: { click: () => sheet.close() } }, icon("x")),
     el("div", { class: "sheet-body" },
       el("p", { class: "muted" }, r.tagline || ""),
       el("div", { class: "chips" }, el("span", { class: "chip" }, TIER[r.tier] || r.tier), el("span", { class: "chip" }, "Comfort: " + r.comfort), el("span", { class: "chip" }, r.controls === "both" ? "Motion + gamepad" : r.controls + " controls"),
-        r.multiplayer ? el("span", { class: "chip good" }, icon("users"), "Multiplayer") : null, el("span", { class: "chip" }, `${r.downloads} downloads`)),
-      el("div", { class: "actions" }, add, btn("dark", String(r.likes), "heart", async () => { if (!S.user) return needSignIn("Sign in to like builds"); await api("like", r.id); toast("Liked"); }),
-        game ? null : el("span", { class: "muted" }, "You don’t own this game on Steam yet."))));
+        r.multiplayer ? el("span", { class: "chip good" }, icon("users"), r.multiplayerKind === "added" ? "Multiplayer (added, experimental)" : "Multiplayer") : null, el("span", { class: "chip" }, `${r.downloads} downloads`)),
+      actions, status, r.multiplayer ? openGamesBox(r) : null));
   if (!sheet.open) sheet.showModal();
 }
 
@@ -405,8 +527,10 @@ async function renderCreate() {
             keydown: e => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); e.currentTarget.click(); } } } },
       el("span", {}, "Let the agent ask me questions first"), el("span", { class: "sw" })),
     el("p", { id: "interviewNote", class: "muted", style: "font-size:13px;margin-top:-6px" }, P.interview === "ask" ? "It will ask about five short questions, then build." : "Off: it just builds with sensible defaults and tells you what it picked."),
-    btn("blue block", "Send to my AI agent", "spark", () => openAgentDialog(g.appid)),
+    btn(P.guided ? "dark block" : "blue block", P.guided ? "Redo the guided setup" : "Start guided setup", "spark", () => openWizard(g.appid)),
+    btn("dark block", "Skip the questions: send to my AI agent", "play", () => openAgentDialog(g.appid)),
     btn("dark block", "Copy the brief instead", "copy", copyBrief),
+    btn("dark block", "Connect Plunge to my AI tools", "bolt", openConnect),
     el("p", { class: "muted", style: "font-size:13px;text-align:center" }, "Plunge finds Claude Code, Codex, Gemini CLI and others on this PC and starts one for you."));
   const mine = el("div", { class: "box" }, el("h4", {}, icon("stack"), "Your builds for this game"));
   if (!g.profiles.length) mine.append(el("p", { class: "muted", style: "font-size:14px" }, "None yet. Once your agent saves one it shows up here."));
@@ -416,12 +540,112 @@ async function renderCreate() {
   mine.append(btn("dark block", "Open this game", "play", () => openGame(g.appid)));
   body.append(el("p", { class: "muted", style: "margin:-8px 0 18px" }, el("button", { class: "chip", on: { click: () => go("create", null) } }, icon("left"), "Change game")),
     el("div", { class: "create-grid" }, custom, el("div", { style: "display:grid;gap:20px" }, build, mine)));
+  S.wizardAsked = S.wizardAsked || {};
+  if (!P.guided && !S.wizardAsked[g.appid]) { S.wizardAsked[g.appid] = true; setTimeout(() => { if (S.page === "create" && S.createApp === g.appid) openWizard(g.appid); }, 200); }   // the questions come first, by default
 }
 const copyBrief = async () => {
   const { prompt } = await api("prompt", S.createApp || S.cur.appid);
   try { await api("copy_text", prompt); toast("Brief copied. Paste it into Claude Code or Codex."); }
   catch { $("#promptText").value = prompt; $("#promptDlg").showModal(); }
 };
+
+
+/* ---------- guided setup: one question at a time ---------- */
+async function openWizard(appid) {
+  const g = S.cur && S.cur.appid === String(appid) ? S.cur : await api("game_info", appid);
+  if (S.prefsFor !== g.appid || !S.prefs) { S.prefs = g.preferences; S.prefsFor = g.appid; }
+  S.choices = S.choices || await api("input_choices");
+  S.createApp = g.appid;
+  const P = S.prefs, C = S.choices, dlg = $("#wizardDlg"), body = $("#wizardBody");
+  P.comfort = P.comfort || {};
+  const steps = [
+    { q: "How do you want to see the game?", help: "This is the camera.", get: () => P.perspective, set: v => P.perspective = v,
+      opts: [["auto", "Let the VR build decide", "Best for most games"], ["first", "First person", "You look out through the character’s eyes"], ["third", "Keep third person", "You see the character; VR moves the camera and aim"]] },
+    { q: "How do you want to move around?", help: "Smooth is like a normal game. Teleport is gentler if you get motion sick.", get: () => P.comfort.locomotion, set: v => P.comfort.locomotion = v,
+      opts: [["smooth", "Smooth movement", "Walk with the thumbstick"], ["teleport", "Teleport", "Point and jump to a spot; easiest on your stomach"], ["room-scale only", "Room-scale only", "You move by walking around your play space"]] },
+    { q: "Will you be sitting or standing?", help: "The build sets your height to match.", get: () => P.comfort.stance, set: v => P.comfort.stance = v,
+      opts: [["seated", "Sitting", "Chair, couch or desk"], ["standing", "Standing", "On your feet with room to move"]] },
+    { q: "Turn in steps instead of smoothly?", help: "Snap turning jumps your view a set angle at a time. Many people find it more comfortable.", get: () => P.comfort.snapTurn, set: v => P.comfort.snapTurn = v,
+      opts: [[true, "Yes, snap turning", "Recommended if you get motion sick"], [false, "No, turn smoothly", ""]] },
+    { q: "Darken the edges while you move?", help: "A comfort vignette narrows your view during movement and cuts motion sickness.", get: () => P.comfort.vignette, set: v => P.comfort.vignette = v,
+      opts: [[true, "Yes, use a vignette", "Recommended"], [false, "No, keep the full view", ""]] },
+    { q: "How should the controllers work?", help: "You can always change this later.", get: () => P.bindingsMode, set: v => P.bindingsMode = v,
+      opts: [["auto", "Let the VR build decide", "It picks sensible controls for this game"], ["custom", "I’ll choose some buttons myself", "Put any action on any button"]],
+      extra: (box) => {
+        if (P.bindingsMode !== "custom") return;
+        const list = el("div", { style: "display:grid;gap:8px" });
+        const draw = () => {
+          list.replaceChildren(...P.bindings.map((b, i) => el("div", { class: "bind" },
+            el("select", { class: "input", "aria-label": "Controller input", on: { change: e => { b.input = e.target.value; } } }, C.inputs.map(x => el("option", { value: x, selected: x === b.input }, x))),
+            el("span", { class: "arrowc" }, icon("right")),
+            el("input", { class: "input", value: b.action, placeholder: "e.g. Reload, Sprint, Open map", "aria-label": "Action", on: { input: e => { b.action = e.target.value; } } }),
+            el("button", { class: "icon-btn", "aria-label": "Remove binding", on: { click: () => { P.bindings.splice(i, 1); draw(); } } }, icon("trash")))),
+            btn("dark sm", "Add a binding", "plus", () => { const used = new Set(P.bindings.map(b => b.input)); P.bindings.push({ input: C.inputs.find(x => !used.has(x)) || C.inputs[0], action: "" }); draw(); }));
+        };
+        draw(); box.append(list);
+      } },
+    { q: "Do you want to play it with friends?", help: "Each friend needs their own copy of the game. Plunge gives you a join code.", get: () => P.multiplayer || "no", set: v => P.multiplayer = v,
+      opts: [["no", "Just me", "Single player"], ["supported", "Yes, if the game already has multiplayer", "The build uses the game’s own multiplayer"],
+             ["add", "Yes, even if it’s single-player (experimental)", "The AI tries to build a co-op layer. It can’t work for every game, and it will tell you honestly what it managed."]] },
+    { q: "Anything else the build should know?", help: "Optional. For example: keep the camera over the shoulder in cars, no head bob, big readable subtitles.", text: true },
+    { q: "Should the AI ask you questions first?", help: "It would ask about five short questions before it builds. Or it can just start with sensible defaults.", get: () => P.interview || "skip", set: v => P.interview = v,
+      opts: [["skip", "No, just build it", "It tells you what it chose"], ["ask", "Yes, ask me first", "Good if this game is unusual"]] },
+  ];
+  const total = steps.length + 1;                                   // the last page is the summary
+  let n = 0;
+  const label = (st, v) => { const o = (st.opts || []).find(x => x[0] === v); return o ? o[1] : String(v); };
+  async function persist() { await api("save_prefs", g.appid, P); await refreshGames(false); }
+  async function next() { n = Math.min(n + 1, steps.length); if (n === steps.length) P.guided = true; await persist(); draw(); }
+  function draw() {
+    const last = n === steps.length, st = steps[n];
+    const top = el("div", { class: "wiz-top" }, el("span", {}, last ? "All set" : `Question ${n + 1} of ${steps.length}`),
+      el("button", { class: "icon-btn", "aria-label": "Close", on: { click: () => dlg.close() } }, icon("x")));
+    const bar = el("div", { class: "wiz-bar" }, el("i", { style: `width:${Math.round((n + 1) / total * 100)}%` }));
+    const nodes = [top, bar];
+    if (last) {
+      nodes.push(el("h2", { class: "wiz-q" }, "Ready to build"), el("p", { class: "wiz-help" }, "Here is what you picked. Press Send and your AI agent builds it for you."),
+        el("div", { class: "wiz-sum" }, ...steps.filter(s => !s.text).map(s => el("div", {}, el("span", {}, s.q.replace(/\?$/, "")), el("b", {}, label(s, s.get())))),
+          P.notes ? el("div", {}, el("span", {}, "Extra notes"), el("b", {}, P.notes.slice(0, 40) + (P.notes.length > 40 ? "…" : ""))) : null));
+    } else {
+      nodes.push(el("h2", { class: "wiz-q" }, st.q), el("p", { class: "wiz-help" }, st.help));
+      if (st.text) nodes.push(el("textarea", { class: "input", rows: "4", placeholder: "Leave empty to skip", "aria-label": st.q, on: { input: e => { P.notes = e.target.value; const nb = $(".wiz-foot .btn.blue", body); if (nb) nb.lastChild.textContent = P.notes.trim() ? "Next" : "Skip"; } } }, P.notes || ""));
+      else {
+        const opts = el("div", { class: "wiz-opts", role: "radiogroup" }), extra = el("div");
+        const paint = () => opts.replaceChildren(...st.opts.map(([v, l, sub]) => el("button", { class: "agent-card" + (st.get() === v ? " on" : ""), role: "radio", "aria-checked": String(st.get() === v),
+          on: { click: () => { st.set(v); if (st.extra && v === "custom") { paint(); extra.replaceChildren(); st.extra(extra); } else next(); } } },
+          el("div", { style: "flex:1" }, el("b", {}, l), sub ? el("span", { class: "sub" }, sub) : null))));
+        paint(); if (st.extra) st.extra(extra);
+        nodes.push(opts, extra);
+      }
+    }
+    const back = n > 0 ? btn("dark", "Back", "left", () => { n--; draw(); }) : el("span");
+    const go = last ? btn("blue", "Send to my AI agent", "spark", async () => { await persist(); dlg.close(); openAgentDialog(g.appid); })
+      : btn("blue", st.text && !P.notes ? "Skip" : "Next", "right", next);
+    nodes.push(el("div", { class: "wiz-foot" }, back, go));
+    body.replaceChildren(...nodes);
+  }
+  dlg.addEventListener("close", async () => { if (!P.guided) { P.guided = true; try { await persist(); } catch (e) { /* the page still works */ } } renderCreate(); }, { once: true });
+  draw(); dlg.showModal();
+}
+
+/* ---------- connect Plunge's tools to the player's AI tools (one click each) ---------- */
+async function openConnect() {
+  const dlg = $("#connectDlg"), body = $("#connectBody");
+  body.replaceChildren(el("p", { class: "muted" }, "Looking for your AI tools…")); if (!dlg.open) dlg.showModal();
+  const st = await api("connect_status");
+  const rows = st.tools.map(t => el("div", { class: "prow" }, el("div", {}, el("b", {}, t.name),
+      el("span", { class: "muted", style: "font-size:13px" }, !t.found ? "Not found on this PC" : t.connected ? "Connected" : "Ready to connect")),
+    t.found ? (t.connected
+      ? btn("dark sm", "Disconnect", "x", async () => { const r = await api("disconnect_tool", t.id); toast(r.note || "Disconnected"); openConnect(); })
+      : btn("blue sm", "Connect", "plus", async () => { const r = await api("connect_tool", t.id); toast(r.note || "Connected"); openConnect(); })) : null));
+  body.replaceChildren(el("h3", {}, "Connect Plunge to your AI tools"),
+    el("p", { class: "muted", style: "font-size:14px" }, "Once connected, your AI tool can use Plunge’s tools by itself: read a game, build the VR layer, test it and undo it. Nothing runs until you ask it to, and it still can’t touch games with anti-cheat. Plunge adds one entry called “plunge” to that tool’s settings (a backup is kept first)."),
+    ...rows,
+    el("div", { class: "box", style: "margin-top:10px" }, el("h4", {}, icon("copy"), "Another tool"),
+      el("p", { class: "muted", style: "font-size:14px" }, "Any tool that supports MCP servers can use this entry."),
+      btn("dark", "Copy the settings entry", "copy", async () => { await api("copy_text", st.snippet); toast("Copied. Paste it into that tool’s MCP settings."); })),
+    el("div", { class: "actions" }, btn("blue", "Done", null, () => dlg.close())));
+}
 
 /* ---------- send the brief to the player's own AI agent ---------- */
 function otherBox(dlg) {                                  // an agent Plunge doesn't know: copy the brief for it
@@ -491,6 +715,36 @@ async function openAgentDialog(appid) {
   draw();
 }
 
+/* ---------- add a game that is a program: an emulator with your game file, or any .exe ---------- */
+function openAddProgram() {
+  const dlg = $("#progDlg"), body = $("#progBody");
+  const f = { exe: "", rom: "", name: "", args: "" };
+  const field = (label, key, ph, browse, kind) => {
+    const inp = el("input", { class: "input", placeholder: ph, "aria-label": label, value: f[key], style: "flex:1", on: { input: e => { f[key] = e.target.value; } } });
+    const row = el("div", { style: "display:flex;gap:8px" }, inp, browse ? btn("dark sm", "Browse", null, async () => {
+      const r = await api("pick_file", kind); if (r.path) { f[key] = r.path; inp.value = r.path; } }) : null);
+    return el("div", { class: "field" }, el("label", {}, label), row);
+  };
+  const mine = () => S.games.filter(g => g.program);
+  const list = el("div", { style: "display:grid;gap:8px" });
+  const drawList = () => list.replaceChildren(...mine().map(g => el("div", { class: "prow" }, el("div", {}, el("b", {}, g.name), el("span", { class: "muted", style: "font-size:13px" }, g.emulator ? `Emulator · ${g.emulator}` : "Program")),
+    btn("dark sm", "Remove", "trash", async () => { await api("remove_program", g.appid); await refreshGames(false); drawList(); toast("Removed from Plunge. Nothing was deleted."); }))));
+  drawList();
+  body.replaceChildren(el("h3", {}, "Add a game or emulator"),
+    el("p", { class: "muted", style: "font-size:14px" }, "For an emulator, pick the emulator’s program and your own game file. For anything else, pick the program. Plunge never provides game files, and it never touches programs that use anti-cheat."),
+    field("Program (.exe)", "exe", "e.g. C:\\Emulators\\Dolphin\\Dolphin.exe", true, "exe"),
+    field("Game file (optional)", "rom", "Your own game file, if the program needs one", true, "any"),
+    field("Name (optional)", "name", "Shown in your library", false),
+    field("Extra start options (optional)", "args", "e.g. --fullscreen", false),
+    el("div", { class: "actions" }, btn("dark", "Close", null, () => dlg.close()), btn("blue", "Add to my library", "plus", async () => {
+      if (!f.exe.trim()) return toast("Pick the program first", true);
+      const r = await api("add_program", f.exe.trim(), f.rom.trim() || null, f.name.trim() || null, f.args.trim());
+      await refreshGames(false); toast(`Added ${r.name}${r.emulator ? " (" + r.emulator + ")" : ""}`); drawList();
+      f.exe = f.rom = f.name = f.args = ""; $$("input", body).forEach(i => { i.value = ""; });
+    })), mine().length ? el("h4", { style: "margin:14px 0 6px" }, "Added by you") : null, list);
+  dlg.showModal();
+}
+
 /* ---------- headset + "missing a game?" ---------- */
 function headsetChips(box, onPick) {
   const h = (S.sys && S.sys.headset) || { choices: [] };
@@ -528,8 +782,14 @@ function go(page, appid) {
   if (page === "library") renderLibrary();
   if (page === "create") guard(renderCreate)();
 }
+async function loadOpenGames() {
+  try { S.open = await api("open_games"); if (S.open.error) S.open = null; } catch (e) { S.open = null; }
+  if (S.page === "discover" && !dqActive()) renderDiscover();
+}
 async function loadDiscover() {
   renderDiscover();
+  loadOpenGames();
+  clearInterval(S.openTimer); S.openTimer = setInterval(() => { if (S.page === "discover" && !document.hidden) loadOpenGames(); }, 20000);
   S.disc = await api("discover");
   try { S.ad = await api("ad"); } catch (e) { S.ad = null; }       // ads must never break Discover
   if (S.page === "discover") renderDiscover();
@@ -737,6 +997,7 @@ async function boot() {
   $("#missingBtn").addEventListener("click", guard(openReport));
   $("#reportClose").addEventListener("click", () => $("#reportDlg").close());
   $("#reportAdd").addEventListener("click", () => $("#addFolder").click());
+  $("#addProgram").addEventListener("click", openAddProgram);
   const runDeep = (btnId, depth, seconds, label) => guard(async () => {
     const b = $(btnId); b.disabled = true; $("#reportNote").textContent = `Scanning your drives (${label})…`;
     try {

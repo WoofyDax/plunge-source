@@ -1,8 +1,8 @@
 # Security
 
 ## Reporting a problem
-Email **[SECURITY EMAIL]** with what you found and how to reproduce it. Please don't post it publicly until it is fixed.
-We aim to answer within [3 business days]. (Fill the bracket in before publishing.)
+Email **security@plungevr.com** with what you found and how to reproduce it. Please don't post it publicly until it is fixed.
+We aim to answer within 3 business days.
 
 ## What Plunge protects, and how
 
@@ -20,7 +20,7 @@ We aim to answer within [3 business days]. (Fill the bracket in before publishin
 
 ## What Plunge does NOT do (read this before you rely on it)
 - It does **not** vet the code inside a third-party loader. The player's approval and the declared checksums are the safeguard, not a scan.
-- Author names on the hub are self-declared. There are no accounts yet, so there is no real identity or reputation.
+- Author names on the hub are the publisher's account name (email code, password or Google sign-in). That proves the account, not who the person is, and there is no reputation system yet.
 - UEVR is downloaded from its official GitHub release over HTTPS; its publisher doesn't provide a checksum for Plunge to compare against.
 - The first message to an AI agent points it at a brief file. What the agent then does is governed by that agent's own permission system.
 - Updates are announced, never installed automatically.

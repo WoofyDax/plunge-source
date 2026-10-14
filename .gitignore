@@ -11,3 +11,5 @@ hub-data/
 *.p12
 *.key
 *.snk
+site/.netlify/
+site/download/*.exe

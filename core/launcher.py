@@ -87,6 +87,7 @@ def start(game, args=(), env=None, forced_exe=None, verify=True):
     if kind == "uri":
         os.startfile(spec["uri"])
         return {"started": None, "how": "launcher"}
+    args = [str(a) for a in spec.get("args", [])] + args          # a program's own arguments first (the game file for an emulator)
     exe = forced_exe or spec.get("exe")
     if not exe:
         raise LaunchError("Plunge couldn't find this game's program. Add the game folder again, or start it yourself.")

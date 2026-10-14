@@ -100,17 +100,26 @@ def page(title, body, desc="", cls=""):
             '</body></html>') % (html.escape(title), html.escape(desc), CSS, logo_svg.mark(css_class="lm", uid="lg"), logo_svg.wordmark(css_class="lw"), cls, body)
 
 
-def build(download_url):
+def build(download_url, installer=None):
     out = ROOT / "site"
     if out.exists():
         shutil.rmtree(out)
     (out / ".well-known").mkdir(parents=True)
     shutil.copy(ROOT / "assets" / "plunge.png", out / "plunge.png")
+    sha = size = fname = None
+    if installer and Path(installer).is_file():                  # host the installer itself, so the link never depends on another service
+        import hashlib
+        fname = Path(installer).name
+        (out / "download").mkdir(exist_ok=True)
+        shutil.copy(installer, out / "download" / fname)
+        data = Path(installer).read_bytes()
+        sha, size = hashlib.sha256(data).hexdigest(), len(data)
+        download_url = "https://%s/download/%s" % (DOMAIN, fname)
     ok = bool(download_url)
     btn = '<a class="btn" href="%s" rel="noopener">Download for Windows</a>' % html.escape(download_url) if ok else '<span class="btn off">Download: coming soon</span>'
     shutil.copytree(ROOT / "web" / "vendor", out / "vendor")
     (out / "js").mkdir()
-    for js in ("hero.js", "scroll.js", "nav.js", "account.js"):
+    for js in ("hero.js", "scroll.js", "nav.js", "account.js", "join.js"):
         shutil.copy(ROOT / "web" / js, out / "js" / js)
     shutil.copytree(ROOT / "web" / "img", out / "img")
     import site_home
@@ -118,6 +127,15 @@ def build(download_url):
     shutil.copy(ROOT / "ui" / "fonts" / "inter.woff2", out / "fonts" / "inter.woff2")
     links = "".join('<a href="/%s">%s</a>' % (s, n.replace(" of Use", "")) for s, n, _ in PAGES[:4]) + '<a href="/credits">Credits</a>'
     (out / "index.html").write_text(site_home.page(download_url, VERSION, links), encoding="utf-8")
+    (out / "join").mkdir()
+    jbody = ('<h1>You\u2019re invited to play in VR</h1><p>A friend opened a Plunge game and sent you this link.</p>'
+             '<p>Join code: <b id="jcode"></b></p>'
+             '<p><a class="btn" id="jopen" href="#">Open in Plunge</a></p>'
+             '<p id="jmsg" class="muted"></p>'
+             '<p>You need Plunge and your own copy of the game. Don\u2019t have Plunge yet? <a href="/download">Get it here</a>.</p>'
+             '<script src="/js/join.js"></script>')
+    (out / "join" / "index.html").write_text(page("Join a Plunge game", jbody, "Open a friend\u2019s invite in Plunge", "legal"), encoding="utf-8")
+    (out / "_redirects").write_text("/join/*  /join/index.html  200\n", encoding="utf-8")
     (out / "account").mkdir()
     (out / "account" / "index.html").write_text(site_home.account_page(links), encoding="utf-8")
     dl = ('<h1>Download Plunge</h1><p>%s</p><h2>Install</h2><ol><li>Run the installer.</li><li>If Windows shows a blue "Windows protected your PC" screen, '
@@ -125,7 +143,11 @@ def build(download_url):
           '<li>Open Plunge and pick a game.</li></ol><h2>You will also need</h2><ul><li>A VR headset set up on your PC.</li>'
           '<li>An AI coding agent such as Claude Code or Codex, with its own subscription. Plunge opens yours; it does not include one.</li></ul>'
           '<p class="note">Games with anti-cheat are not modified. Always keep a backup of saves for games you care about.</p>') % btn
-    (out / "download" ).mkdir()
+    if sha:
+        dl += ('<h2>Check your download</h2><p>Plunge %s, %.1f MB. To be sure the file is exactly the one published here, run this in PowerShell and compare:</p>'
+               '<p><code>Get-FileHash .\\%s -Algorithm SHA256</code></p><p>SHA-256: <code>%s</code></p>'
+               '<p class="note">This early version is not code-signed yet, so Windows will warn you. That is expected; the checksum above is how you can be sure it is the real file.</p>') % (VERSION, size / 1048576, html.escape(fname), sha)
+    (out / "download").mkdir(exist_ok=True)
     (out / "download" / "index.html").write_text(page("Download Plunge", dl, "Download Plunge for Windows"), encoding="utf-8")
     for slug, title, src in PAGES:
         f = ROOT / "legal" / src
@@ -141,7 +163,7 @@ def build(download_url):
                '<li><b>Inter</b> typeface, SIL Open Font License 1.1, &copy; The Inter Project Authors.</li></ul>') % rows
     (out / "credits").mkdir()
     (out / "credits" / "index.html").write_text(page("Credits", credits, "Credits for the screenshots and software used on this site", "legal"), encoding="utf-8")
-    (out / "latest.json").write_text(json.dumps({"version": VERSION, "url": "https://%s/download" % DOMAIN, "notes": ""}, indent=1) + "\n", encoding="utf-8")
+    (out / "latest.json").write_text(json.dumps({"version": VERSION, "url": "https://%s/download" % DOMAIN, "notes": "", **({"sha256": sha, "size": size} if sha else {})}, indent=1) + "\n", encoding="utf-8")
     (out / "robots.txt").write_text("User-agent: *\nAllow: /\nSitemap: https://%s/sitemap.xml\n" % DOMAIN, encoding="utf-8")
     urls = [""] + ["download", "credits"] + [p[0] for p in PAGES]
     (out / "sitemap.xml").write_text('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>\n' %
@@ -153,6 +175,7 @@ def build(download_url):
            "Referrer-Policy": "no-referrer", "Permissions-Policy": "camera=(), microphone=(), geolocation=()"}
     (out / "_headers").write_text("/*\n" + "".join("  %s: %s\n" % kv for kv in sec.items()) + "/latest.json\n  Cache-Control: public, max-age=300\n", encoding="utf-8")
     (out / "vercel.json").write_text(json.dumps({"cleanUrls": True, "trailingSlash": False,
+                                                 "rewrites": [{"source": "/join/:code", "destination": "/join/index.html"}],
                                                  "headers": [{"source": "/(.*)", "headers": [{"key": k, "value": v} for k, v in sec.items()]}]}, indent=1) + "\n", encoding="utf-8")
     return out
 
@@ -160,7 +183,8 @@ def build(download_url):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--download-url", default="")
+    ap.add_argument("--installer", default="", help="path to PlungeSetup-x.y.z.exe: it is copied into the site and linked, with its SHA-256")
     a = ap.parse_args()
     if a.download_url and not a.download_url.startswith("https://"):
         sys.exit("the download URL must start with https://")
-    print("built", build(a.download_url))
+    print("built", build(a.download_url, a.installer or None))

@@ -157,4 +157,27 @@ from core import prompt as _prompt_mod
 _brief = api.make_prompt(GAME["appid"])["prompt"]
 check("the brief tells the agent to make controllers act as a mouse on flat menus", all(s in _brief for s in ("Menus that are not translated to VR", "laser pointer", "Trigger = left click", "never leave me stuck", "controllers alone")) or all(s in _brief.lower() for s in ("laser pointer", "left click", "controllers alone")))
 check('the brief points the agent to the REA reverse-engineering repo', 'github.com/morluto/rea' in _brief)
+_ui = (HERE / "ui" / "app.js").read_text(encoding="utf-8")
+check("guided setup asks one question at a time and is offered on the Create page", all(x in _ui for x in ("async function openWizard", "Question ${n + 1} of ${steps.length}", "Start guided setup")) and (HERE / "ui" / "index.html").read_text(encoding="utf-8").count('id="wizardDlg"') == 1)
+from core import hub as _hub
+import inspect as _insp
+check("uploads and downloads get a long timeout (a 20 MB build on a slow link used to fail at 15 s)", "timeout=180" in _insp.getsource(_hub.publish) and "timeout=120" in _insp.getsource(_hub.get))
+_iss = (HERE / "installer" / "plunge.iss").read_text(encoding="utf-8")
+check("the installer has a real publisher name and no placeholder", "[" not in _iss.split("#define Publisher")[1].splitlines()[0] and "OPERATOR" not in _iss)
+check("invite links work after a default install (the plunge:// handler is not opt-in)", 'Name: "protocol"' in _iss and "unchecked" not in [l for l in _iss.splitlines() if l.startswith('Name: "protocol"')][0])
+_sec = (HERE / "SECURITY.md").read_text(encoding="utf-8")
+_readme = (HERE / "README.md").read_text(encoding="utf-8")
+check("SECURITY.md has a real contact and no blank to fill in", "security@plungevr.com" in _sec and not re.search(r"\[[A-Z][A-Z0-9 ]+\]", _sec) and "Fill the bracket" not in _sec)
+check("the README says in plain words what the app reads, writes, starts and connects to", all(x in _readme for x in ("## What Plunge does on your PC", "**It reads**", "**It writes**", "**It starts programs**", "**It talks to the internet**", "**It never**")))
+import ast as _ast
+_bad = []
+for _f in list((HERE / "core").glob("*.py")) + [HERE / "app.py"]:
+    for _n in _ast.walk(_ast.parse(_f.read_text(encoding="utf-8"))):
+        if isinstance(_n, _ast.Call):
+            _name = getattr(_n.func, "id", None) or getattr(_n.func, "attr", "")
+            if _name in ("eval", "exec", "system", "popen"):
+                _bad.append((_f.name, _n.lineno, _name))
+            if any(k.arg == "shell" and getattr(k.value, "value", False) is True for k in _n.keywords):
+                _bad.append((_f.name, _n.lineno, "shell=True"))
+check("the shipped code has no dynamic code execution, no os.system and no shell calls (the README promises it)", not _bad)
 sys.exit(1 if fails else 0)

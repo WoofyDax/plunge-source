@@ -5,6 +5,7 @@ to start the game, and optionally how players host and join each other. Everythi
 recorded in a manifest so Uninstall puts the original files back.
 """
 import json
+import os
 import re
 import shutil
 import time
@@ -23,6 +24,14 @@ def manifest_path(appid):
 
 def is_installed(appid):
     return manifest_path(appid).exists()
+
+
+def installed_profile(appid):
+    """The slug of the build currently applied to this game, or None."""
+    try:
+        return json.loads(manifest_path(appid).read_text(encoding="utf-8")).get("profile")
+    except (OSError, ValueError):
+        return None
 
 
 def _tokens(game):
@@ -212,8 +221,16 @@ def launch(game, recipe, mode="solo", address=None, port=None):
         args, env = _fill(mp.get("joinArgs", []), game, extra), mp.get("joinEnv", {})
         if mp.get("joinFile"):
             write_join_file(mp["joinFile"], game, address, game["appid"])
+        if mp.get("joinUri"):                              # a steam://connect/... link: Steam starts the game and hands it the address
+            if not safety.valid_join_uri(mp["joinUri"]):
+                raise RecipeError("the join link must be a steam:// link")
+            os.startfile(mp["joinUri"].replace("{address}", address))
+            return {"mode": "join", "started": None, "how": "steam link"}
     elif mp.get("joinFile") and is_installed(game["appid"]):
         write_join_file(mp["joinFile"], game, "", game["appid"])  # solo: empty the join address
+    for k in env:
+        if safety.bad_env_name(k):
+            raise RecipeError("a build may not set the environment variable %s" % k)
     env = {k: resolve(str(v), game, extra) for k, v in env.items()}
     spec = recipe.get("launch") or {"mode": "steam"}
     args = _fill(spec.get("args", []), game, extra) + args

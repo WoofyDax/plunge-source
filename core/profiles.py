@@ -8,7 +8,7 @@ import json
 import re
 from pathlib import Path
 
-from . import paths, recipe
+from . import paths, recipe, safety
 
 MAX_BYTES = 50 * 1024 * 1024
 GAME_CONTENT_EXT = {".pak", ".ucas", ".utoc", ".uasset", ".umap", ".assets", ".bundle", ".bank", ".fsb",
@@ -149,10 +149,20 @@ def validate(slug, game=None, root=None):
     if mp:
         if not isinstance(mp.get("maxPlayers"), int) or mp["maxPlayers"] < 2:
             err("recipe.multiplayer.maxPlayers must be a whole number of at least 2")
-        if not (mp.get("joinArgs") or mp.get("joinEnv") or mp.get("joinFile") or mp.get("manualJoin")):
-            err("recipe.multiplayer needs joinArgs, joinEnv, joinFile, or manualJoin: true")
+        if not (mp.get("joinArgs") or mp.get("joinEnv") or mp.get("joinFile") or mp.get("joinUri") or mp.get("manualJoin")):
+            err("recipe.multiplayer needs joinArgs, joinEnv, joinFile, joinUri, or manualJoin: true")
+        if mp.get("joinUri") is not None and not safety.valid_join_uri(mp.get("joinUri")):
+            err("recipe.multiplayer.joinUri must be a steam:// link, with {address} where the host's address goes")
+        for key in ("hostEnv", "joinEnv"):
+            for name in (mp.get(key) or {}):
+                if safety.bad_env_name(name):
+                    err("recipe.multiplayer.%s: %r is not allowed. Use the mod's own variable (for example MYMOD_JOIN), never a system or runtime one" % (key, name))
         if not t.get("multiplayer"):
             err("multiplayer profiles must record how hosting and joining were tested in tested.multiplayer")
+        if mp.get("kind", "native") not in ("native", "added"):
+            err('recipe.multiplayer.kind must be "native" (the game has it) or "added" (a layer built for a single-player game)')
+        if mp.get("kind") == "added" and "experimental" not in str(t.get("multiplayer")).lower():
+            err('multiplayer added to a single-player game must say "experimental" in tested.multiplayer and list what is shared')
         if mp.get("officialServers") is not False:
             err("recipe.multiplayer.officialServers must be false: Plunge never connects to a game's official servers")
     return f

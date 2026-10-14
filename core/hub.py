@@ -23,7 +23,7 @@ class HubError(ValueError):               # a ValueError, so the app shows its m
     pass
 
 
-def _req(path, data=None, ctype="application/json", raw=False):
+def _req(path, data=None, ctype="application/json", raw=False, timeout=15):
     try:
         safety.require_secure_url(HUB_URL)                     # plain http is only allowed for a hub on this same PC
     except ValueError as e:
@@ -34,7 +34,7 @@ def _req(path, data=None, ctype="application/json", raw=False):
         headers["Authorization"] = "Bearer " + tok
     req = urllib.request.Request(HUB_URL + path, data=data, headers=headers)
     try:
-        with urllib.request.urlopen(req, timeout=15) as r:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             limit = MAX_DOWNLOAD if raw else MAX_JSON
             body = r.read(limit + 1)
     except urllib.error.HTTPError as e:
@@ -46,7 +46,9 @@ def _req(path, data=None, ctype="application/json", raw=False):
             settings.set("account", None)
             msg = "your sign-in has ended: please sign in again"
         raise HubError(msg)
-    except (urllib.error.URLError, OSError):
+    except (urllib.error.URLError, OSError) as e:
+        if isinstance(getattr(e, "reason", e), TimeoutError):
+            raise HubError("the connection to the Plunge hub was too slow and timed out. Try again; a build can be 20 MB or more")
         raise HubError("can't reach the Plunge hub at %s" % HUB_URL)
     if len(body) > limit:                                      # a hostile or broken hub can't make us read forever
         raise HubError("the hub sent more data than expected")
@@ -206,8 +208,8 @@ def delete_account():
     return {"deleted": True}
 
 
-def browse(sort="new", appid=None, text=None):
-    q = urllib.parse.urlencode({k: v for k, v in (("sort", sort), ("appid", appid), ("q", text)) if v})
+def browse(sort="new", appid=None, text=None, tier=None, mp=False):
+    q = urllib.parse.urlencode({k: v for k, v in (("sort", sort), ("appid", appid), ("q", text), ("tier", tier), ("mp", "1" if mp else None)) if v})
     return _req("/profiles?" + q)["profiles"]
 
 
@@ -215,7 +217,7 @@ def get(pid):
     """Download a profile from the hub into the local profile folder and validate it."""
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,60}", pid):
         raise HubError("bad profile id")
-    data = _req("/profiles/%s/download" % pid, raw=True)
+    data = _req("/profiles/%s/download" % pid, raw=True, timeout=120)
     dest = paths.PROFILES / pid
     if dest.exists():
         raise HubError("you already have this profile")
@@ -249,7 +251,7 @@ def publish(slug):
         for p in d.rglob("*"):
             if p.is_file():
                 zf.write(p, p.relative_to(d).as_posix())
-    return _req("/profiles", buf.getvalue(), "application/zip")
+    return _req("/profiles", buf.getvalue(), "application/zip", timeout=180)      # builds are tens of MB: a slow home upload must not time out
 
 
 def like(pid):

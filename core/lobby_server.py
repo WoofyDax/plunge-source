@@ -30,6 +30,9 @@ def _sweep():
         del LOBBIES[code]
 
 
+_LIST_CACHE = {}          # appid -> (time, answer): the home page polls this, so it is answered from memory for a few seconds
+
+
 def _public(l):
     return {k: l[k] for k in ("code", "appid", "profile", "title", "maxPlayers", "players", "public")}
 
@@ -95,9 +98,17 @@ class Handler(BaseHTTPRequestHandler):
         with LOCK:
             _sweep()
             if parts == ["lobbies"]:
-                appid = (parse_qs(u.query).get("appid") or [None])[0]
-                rows = [_public(l) for l in LOBBIES.values() if l["public"] and (not appid or l["appid"] == appid)]
-                return self._send({"lobbies": rows[:100]})
+                appid = safety.clean_text((parse_qs(u.query).get("appid") or [""])[0], 40)
+                hit = _LIST_CACHE.get(appid)
+                if hit and time.time() - hit[0] < 4:
+                    return self._send(hit[1])
+                mine = [l for l in LOBBIES.values() if not appid or l["appid"] == appid]
+                rows = sorted((_public(l) for l in mine if l["public"]), key=lambda r: (-r["players"], r["code"]))
+                out = {"lobbies": rows[:100], "publicCount": len(rows), "privateCount": sum(1 for l in mine if not l["public"])}
+                if len(_LIST_CACHE) > 200:
+                    _LIST_CACHE.clear()
+                _LIST_CACHE[appid] = (time.time(), out)
+                return self._send(out)
             if len(parts) == 2 and parts[0] == "lobbies":
                 l = LOBBIES.get(parts[1].upper())
                 return self._send(_public(l)) if l else self._miss()

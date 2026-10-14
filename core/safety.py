@@ -24,6 +24,29 @@ def valid_address(addr):
     return ".." not in addr
 
 
+# A build may set its OWN environment variables for hosting and joining (MYMOD_JOIN), never the system's or a runtime's
+# (PATH or a .NET/Java startup hook would let a build run code in every program the game starts).
+_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{2,40}$")
+_SYSTEM_ENV = {"PATH", "PATHEXT", "COMSPEC", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PROGRAMDATA",
+               "PROGRAMFILES", "HOMEDRIVE", "HOMEPATH", "USERNAME", "PSMODULEPATH", "PROCESSOR_ARCHITECTURE"}
+_RUNTIME_ENV = ("LD_", "DYLD_", "COR_", "CORECLR_", "DOTNET_STARTUP", "DOTNET_ADDITIONAL", "DOTNET_ROOT", "JAVA", "_JAVA", "JDK_", "PYTHON", "NODE_", "PERL", "RUBY")
+
+
+def bad_env_name(name):
+    """True when a build must not set this environment variable."""
+    return (not isinstance(name, str) or not _ENV_NAME.fullmatch(name) or name in _SYSTEM_ENV or name.startswith(_RUNTIME_ENV))
+
+
+_JOIN_URI = re.compile(r"^steam://[A-Za-z0-9/_.:?=&-]+$")
+
+
+def valid_join_uri(uri):
+    """A Steam link (steam://connect/{address}) that joins a host. {address} may appear once and nothing else may be a placeholder."""
+    if not isinstance(uri, str) or len(uri) > 200 or uri.count("{address}") > 1:
+        return False
+    return bool(_JOIN_URI.fullmatch(uri.replace("{address}", "host")))
+
+
 def is_loopback_url(url):
     h = (urlparse(url).hostname or "").lower()
     return h in ("127.0.0.1", "localhost", "::1")

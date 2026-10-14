@@ -3,7 +3,7 @@
 #ifndef AppVersion
   #define AppVersion "0.9.0"
 #endif
-#define Publisher "[OPERATOR NAME]"
+#define Publisher "Plunge (plungevr.com)"
 
 [Setup]
 AppId={{B6C1E2D4-5A3F-4C7B-9E21-6D0A8F3C1B57}
@@ -27,7 +27,7 @@ LicenseFile=..\legal\TERMS.md
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
-Name: "protocol"; Description: "Open plunge:// join links with Plunge"; Flags: unchecked
+Name: "protocol"; Description: "Open plunge:// join links with Plunge (so friends' invite links work)"
 
 [Files]
 Source: "..\dist\Plunge.exe"; DestDir: "{app}"; Flags: ignoreversion

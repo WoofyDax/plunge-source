@@ -27,7 +27,7 @@
     <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></symbol>
     <symbol id="i-vr" viewBox="0 0 24 24"><path d="M3 9.5A3 3 0 016 6.5h12a3 3 0 013 3v5a3 3 0 01-3 3h-3.2c-1 0-1.6-.6-2-1.4l-.3-.6a1 1 0 00-1 0l-.3.6c-.4.8-1 1.4-2 1.4H6a3 3 0 01-3-3z"/></symbol>
     <symbol id="i-pad" viewBox="0 0 24 24"><rect x="2.5" y="7" width="19" height="11" rx="5.5"/><path d="M8 10.5v4M6 12.5h4"/><circle cx="15.5" cy="11.5" r=".9" fill="currentColor"/><circle cx="18" cy="13.5" r=".9" fill="currentColor"/></symbol>
-    <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4.5 15v3.5a2 2 0 002 2h11a2 2 0 002-2V15"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M4.5 15v3.5a2 2 0 002 2h11a2 2 0 002-2V15"/></symbol><symbol id="i-up" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4.5 15v3.5a2 2 0 002 2h11a2 2 0 002-2V15"/></symbol>
     <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
     <symbol id="i-spark" viewBox="0 0 24 24"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
     <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="3"/><path d="M15.5 8.5V6.5a3 3 0 00-3-3h-6a3 3 0 00-3 3v6a3 3 0 003 3h2"/></symbol>
@@ -82,7 +82,8 @@
         <button class="chip" data-f="quick">Quick try</button>
         <button class="chip" data-f="blocked">Blocked</button>
         <button class="chip" id="missingBtn" title="See what Plunge looked at, add a folder, or scan your drives"><svg class="i"><use href="#i-search"/></svg>Missing a game?</button>
-        <button class="chip" id="addFolder" title="Add a folder that holds a game, or a folder of games" style="margin-left:auto"><svg class="i"><use href="#i-plus"/></svg>Add a game folder</button>
+        <button class="chip" id="addProgram" title="Add an emulator with your game file, or any program that is a game" style="margin-left:auto"><svg class="i"><use href="#i-plus"/></svg>Add a game or emulator</button>
+        <button class="chip" id="addFolder" title="Add a folder that holds a game, or a folder of games"><svg class="i"><use href="#i-plus"/></svg>Add a game folder</button>
       </div>
       <div id="libBody"></div>
     </section>
@@ -131,6 +132,12 @@
 <dialog id="publishDlg"><div class="joinbox" style="width:min(620px,94vw)" id="publishBody"></div></dialog>
 
 <dialog id="accountDlg"><div class="joinbox" style="width:min(460px,94vw)" id="accountBody"></div></dialog>
+
+<dialog id="progDlg"><div class="joinbox" style="width:min(600px,94vw)" id="progBody"></div></dialog>
+
+<dialog id="connectDlg"><div class="joinbox" style="width:min(600px,94vw)" id="connectBody"></div></dialog>
+
+<dialog id="wizardDlg"><div class="joinbox" style="width:min(620px,94vw)" id="wizardBody"></div></dialog>
 
 <dialog id="agentDlg"><div class="joinbox" style="width:min(680px,94vw)" id="agentBody"></div></dialog>
 

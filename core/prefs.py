@@ -15,10 +15,12 @@ INPUTS = ["Left trigger", "Right trigger", "Left grip", "Right grip", "Left thum
           "A", "B", "X", "Y", "Left menu", "Right menu (system)"]
 LOCOMOTION = ("smooth", "teleport", "room-scale only")
 STANCE = ("seated", "standing")
+MULTIPLAYER = {"no": "Single player", "supported": "Multiplayer if the game supports it",
+               "add": "Multiplayer even if the game is single-player (experimental)"}
 
 DEFAULTS = {"perspective": "auto",
             "comfort": {"snapTurn": True, "vignette": True, "locomotion": "smooth", "stance": "seated"},
-            "bindingsMode": "auto", "bindings": [], "notes": "", "interview": "skip"}
+            "bindingsMode": "auto", "bindings": [], "notes": "", "interview": "skip", "multiplayer": "no", "guided": False}
 
 
 def _file(appid):
@@ -41,6 +43,8 @@ def clean(p):
         "bindings": [],
         "notes": str(p.get("notes", ""))[:2000],
         "interview": "ask" if p.get("interview") == "ask" else "skip",   # skip = the agent just builds, using defaults
+        "multiplayer": p.get("multiplayer") if p.get("multiplayer") in MULTIPLAYER else "no",
+        "guided": bool(p.get("guided")),                                    # the player finished the question-by-question setup once
     }
     seen = set()
     for b in (p.get("bindings") or [])[:40]:
@@ -76,7 +80,8 @@ def effective(p):
 def is_default(p):
     """True when the player changed nothing that affects the build (how the agent is briefed doesn't count)."""
     a, b = effective(p), clean({})
-    a.pop("interview", None), b.pop("interview", None)
+    for k in ("interview", "guided"):
+        a.pop(k, None), b.pop(k, None)
     return a == b
 
 
@@ -94,6 +99,10 @@ def brief_text(p):
         lines.append("- Controller bindings: the VR build decides the best mapping")
     for b in p["bindings"]:
         lines.append("- Controller binding: %s -> %s" % (b["input"], b["action"]))
+    if p["multiplayer"] != "no":
+        lines.append("- Multiplayer: %s. %s" % (MULTIPLAYER[p["multiplayer"]],
+                     "Follow the section on adding multiplayer to a single-player game, and label it experimental." if p["multiplayer"] == "add"
+                     else "Only if the game already has it: do not invent netcode."))
     if p["notes"].strip():
         lines.append("- In the player's words: %s" % p["notes"].strip())
     lines.append("If a preference cannot be done in this game, say so in one line and do the closest thing. "

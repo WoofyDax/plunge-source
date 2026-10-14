@@ -44,6 +44,62 @@ def _call(path, body=None):
         raise LobbyError("the lobby service sent something that isn't valid")
 
 
+def free_port(base):
+    """The first port from `base` upward that nothing on this PC is using (TCP and UDP), so two games never fight over one."""
+    import socket
+    for p in range(base, base + 80):
+        socks = []
+        try:
+            for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+                s = socket.socket(socket.AF_INET, kind)
+                socks.append(s)
+                s.bind(("0.0.0.0", p))
+            return p
+        except OSError:
+            continue
+        finally:
+            for s in socks:
+                s.close()
+    return base
+
+
+def _ipconfig():
+    import subprocess
+    try:
+        return subprocess.run(["ipconfig"], capture_output=True, text=True, timeout=8).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def private_network():
+    """A friends network on this PC (Tailscale or ZeroTier) and its address, or None. Friends can reach that address across the internet."""
+    name, found = None, None
+    for line in _ipconfig().splitlines():
+        if line and not line[0].isspace():                      # an adapter heading such as "Ethernet adapter Tailscale:"
+            low = line.lower()
+            name = "Tailscale" if "tailscale" in low else "ZeroTier" if "zerotier" in low else None
+        elif name and "ipv4" in line.lower():
+            m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", line)
+            if m:
+                found = {"name": name, "ip": m.group(1)}
+                break
+    return found
+
+
+_LOCAL = re.compile(r"^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|localhost$|\[::1\]$)", re.I)
+
+
+def reachable(addr):
+    """If a game reports an address only this home network can use, swap in the Tailscale/ZeroTier one. Returns (address, network name or None)."""
+    host, _, port = addr.rpartition(":") if addr.count(":") == 1 else (addr, "", "")
+    if not _LOCAL.match(host or addr):
+        return addr, None
+    net = private_network()
+    if not net:
+        return addr, None
+    return (net["ip"] + (":" + port if port else "")), net["name"]
+
+
 def find_address(spec, game, timeout=60):
     """Read the host's address from a log file, on the line after fixed words (Melty's connect.address)."""
     from . import recipe
@@ -101,6 +157,12 @@ def resolve(code):
     if not safety.valid_address(r.get("address")):          # never trust the server's answer: it ends up in launch arguments
         raise LobbyError("the lobby returned an address that isn't valid")
     return r
+
+
+def counts(appid=None):
+    """Open games for a game (or every game): {"lobbies": [...public...], "publicCount": n, "privateCount": n}."""
+    r = _call("/lobbies" + ("?appid=%s" % urllib.parse.quote(str(appid), safe="") if appid else ""))
+    return {"lobbies": r.get("lobbies", []), "publicCount": int(r.get("publicCount", len(r.get("lobbies", [])))), "privateCount": int(r.get("privateCount", 0))}
 
 
 def list_open(appid=None):

@@ -42,6 +42,12 @@ ROUTES = {
         "maturity": "experimental",
         "note": "An AI agent adds OpenXR through the engine's own XR support.",
     },
+    "emulator": {
+        "id": "agent-emulator",
+        "label": "Emulated game (AI-built VR layer)",
+        "maturity": "research",
+        "note": "An AI agent works on the emulator that runs your game file: its renderer, camera and input. Results vary a lot by system. Your own game file only.",
+    },
     "other": {
         "id": "agent-custom",
         "label": "Custom engine (AI reverse engineering)",
@@ -194,6 +200,8 @@ def scan_games():
         if str(Path(g["path"]).resolve()).lower() in seen_paths:
             continue
         info = inspect_install(g["path"])
+        if g.get("emulator"):
+            info["engine"] = "emulator"
         exe = info["exe"] or (g["launch"].get("exe") if g["launch"]["kind"] == "exe" else None) or g.pop("exeHint", None)
         info["exe"] = exe if exe and Path(exe).exists() else info["exe"]
         games.append({**g, "buildId": None, **info, **classify(info)})

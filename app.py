@@ -5,6 +5,7 @@
                                 preferences, environment, install_profile, uninstall_profile, launch_game
     Plunge.exe lobby            run the multiplayer lobby service
     Plunge.exe hub              run the community hub (Discover uploads)
+    plunge-cli.exe mcp          Plunge's tools as an MCP server for AI agents (stdio)
 """
 import json
 import os
@@ -62,6 +63,16 @@ class Bridge:
         except Exception as e:
             return {"error": str(e)}
 
+    def pick_file(self, kind="any"):
+        """Native file picker: the program's .exe, or a game file (ROM). Returns {"path"} or {"cancelled": True}."""
+        import webview
+        try:
+            types = ("Programs (*.exe)",) if kind == "exe" else ("All files (*.*)",)
+            chosen = webview.windows[0].create_file_dialog(webview.OPEN_DIALOG, file_types=types)
+            return {"path": chosen[0]} if chosen else {"cancelled": True}
+        except Exception as e:
+            return {"error": str(e)}
+
     def _wrap(name):  # noqa: N805
         def call(self, *a):
             from core import log
@@ -89,6 +100,13 @@ class Bridge:
     publish_lobby = _wrap("publish_lobby")
     stop_hosting = _wrap("stop_hosting")
     join = _wrap("join")
+    connect_status = _wrap("connect_status")
+    connect_tool = _wrap("connect_tool")
+    disconnect_tool = _wrap("disconnect_tool")
+    open_games = _wrap("open_games")
+    add_program = _wrap("add_program")
+    remove_program = _wrap("remove_program")
+    join_info = _wrap("join_info")
     lobbies = _wrap("lobbies")
     copy_text = _wrap("copy_text")
     agents_detect = _wrap("agents_detect")
@@ -114,6 +132,8 @@ class Bridge:
     discover = _wrap("discover")
     discover_search = _wrap("discover_search")
     get_profile = _wrap("get_profile")
+    discover_browse = _wrap("discover_browse")
+    apply_build = _wrap("apply_build")
     publish = _wrap("publish")
     like = _wrap("like")
     input_choices = _wrap("input_choices")
@@ -186,6 +206,10 @@ def main():
     if argv[:1] == ["tool"]:
         _attach_console()
         sys.exit(run_tool(argv[1:]))
+    if argv[:1] == ["mcp"]:                       # Plunge's tools as an MCP server on stdin/stdout, started by an AI agent
+        from core import mcp
+        mcp.serve()
+        return
     if argv[:1] == ["lobby"]:
         _attach_console()
         from core import lobby_server

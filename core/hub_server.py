@@ -9,6 +9,7 @@ so rate limits see real client addresses.
 
     plunge-cli.exe hub [--port 8788] [--bind 0.0.0.0] [--data DIR]
 """
+import hashlib
 import io
 import json
 import os
@@ -40,7 +41,7 @@ ORIGINS = {o.strip() for o in os.environ.get("PLUNGE_WEB_ORIGINS", "https://plun
 COOKIE = "plunge_session"
 LISTED_KEYS = ("title", "tagline", "steamAppId", "engine", "tier", "author", "comfort", "controls", "version")
 LIMITS = {"read": (240, 60), "upload": (6, 3600), "like": (30, 60), "likeone": (1, 86400), "admin": (10, 60),
-          "authstart": (6, 3600), "authverify": (20, 3600), "login": (30, 3600), "google": (40, 3600), "me": (120, 60)}   # (hits, seconds) per client address
+          "beta": (40, 3600), "authstart": (6, 3600), "authverify": (20, 3600), "login": (30, 3600), "google": (40, 3600), "me": (120, 60)}   # (hits, seconds) per client address
 
 
 def _index_file():
@@ -134,7 +135,8 @@ def _row(pid, e):
             "tier": safety.clean_text(m.get("tier"), 20), "author": safety.clean_text(m.get("author"), 60),
             "comfort": safety.clean_text(m.get("comfort"), 20), "controls": safety.clean_text(m.get("controls"), 20),
             "version": safety.clean_text(m.get("version"), 20), "downloads": e["downloads"], "likes": e["likes"],
-            "created": e["created"], "featured": e["featured"], "multiplayer": bool((m.get("recipe") or {}).get("multiplayer"))}
+            "created": e["created"], "featured": e["featured"], "multiplayer": bool((m.get("recipe") or {}).get("multiplayer")),
+            "multiplayerKind": ("added" if ((m.get("recipe") or {}).get("multiplayer") or {}).get("kind") == "added" else "native") if (m.get("recipe") or {}).get("multiplayer") else None}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -413,6 +415,101 @@ class Handler(BaseHTTPRequestHandler):
             return self._send({"ok": True}, cookie=self._cookie("", 0))
         self._send({"error": "not found"}, 404)
 
+    # ---- beta downloads: an installer for testers at an unguessable address, not listed anywhere --------------------------------
+    _BETA_TOKEN = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+    _BETA_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,78}\.(exe|zip)$")
+
+    def _beta_dir(self, token):
+        return STATE["dir"] / "beta" / token
+
+    def _beta_put(self, parts, n):
+        """POST /admin/beta/<token>/<file>: the operator puts an installer on the hub (needs the admin key)."""
+        if self._limited("admin"):
+            return
+        if not (STATE["admin"] and secrets.compare_digest(self.headers.get("X-Admin", ""), STATE["admin"])):
+            return self._send({"error": "not allowed"}, 403)
+        token, name = parts[2], parts[3]
+        if not (self._BETA_TOKEN.fullmatch(token) and self._BETA_NAME.fullmatch(name)) or n < 1:
+            return self._send({"error": "bad name or token"}, 400)
+        data = self.rfile.read(n)
+        self._unread = 0
+        d = self._beta_dir(token)
+        d.mkdir(parents=True, exist_ok=True)
+        paths.atomic_write_bytes(d / name, data)
+        return self._send({"ok": True, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+
+    def _beta_get(self, parts):
+        """GET /beta/<token>/ shows a small download page, GET /beta/<token>/<file> sends the file (resumable)."""
+        token = parts[1] if len(parts) > 1 else ""
+        if not self._BETA_TOKEN.fullmatch(token) or len(parts) > 3:
+            return self._send({"error": "not found"}, 404)
+        d = self._beta_dir(token)
+        if len(parts) == 2:
+            files = sorted(p for p in d.glob("*") if p.is_file() and self._BETA_NAME.fullmatch(p.name)) if d.is_dir() else []
+            if not files:
+                return self._send({"error": "not found"}, 404)
+            rows = "".join('<p><a class="b" href="/beta/%s/%s">Download %s (%.1f MB)</a></p><p class="s">SHA-256:<br><code>%s</code></p>' % (
+                token, f.name, f.name, f.stat().st_size / 1048576, hashlib.sha256(f.read_bytes()).hexdigest()) for f in files)
+            body = ("<!doctype html><html lang=en><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\"><meta name=robots content=\"noindex,nofollow\"><title>Plunge beta</title>"
+                    "<style>body{font:16px/1.5 system-ui,sans-serif;background:#141414;color:#eee;max-width:560px;margin:8vh auto;padding:0 20px}"
+                    "a.b{display:inline-block;background:#168bff;color:#fff;padding:12px 20px;border-radius:99px;text-decoration:none;font-weight:700}code{word-break:break-all;font-size:13px}.s{color:#aaa;font-size:14px}</style>"
+                    "<h1>Plunge beta</h1><p>Thanks for testing. This is an early, unsigned version, so Windows will warn you: choose <b>More info</b>, then <b>Run anyway</b>.</p>"
+                    "%s<p>Send feedback to support@plungevr.com</p></html>") % rows
+            data = body.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
+            self.send_header("X-Robots-Tag", "noindex, nofollow")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(data)
+            return
+        name = parts[2]
+        f = d / name
+        if not self._BETA_NAME.fullmatch(name) or not f.is_file():
+            return self._send({"error": "not found"}, 404)
+        if self._limited("beta"):
+            return
+        size = f.stat().st_size
+        start, end, code = 0, size - 1, 200
+        rng = self.headers.get("Range", "")
+        m = re.fullmatch(r"bytes=(\d+)-(\d*)", rng.strip())
+        if m:                                                    # a browser resuming an interrupted download
+            start = int(m.group(1))
+            end = min(int(m.group(2)), size - 1) if m.group(2) else size - 1
+            if start >= size or start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", "bytes */%d" % size)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            code = 206
+        self.send_response(code)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.send_header("Accept-Ranges", "bytes")
+        if code == 206:
+            self.send_header("Content-Range", "bytes %d-%d/%d" % (start, end, size))
+        self.send_header("Content-Disposition", 'attachment; filename="%s"' % name)
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Robots-Tag", "noindex, nofollow")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(start)
+                left = end - start + 1
+                while left > 0:
+                    chunk = fh.read(min(1024 * 1024, left))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (BrokenPipeError, ConnectionError, OSError):
+            pass
+
     def do_GET(self):
         if self.path == "/health":                              # for the uptime monitor and the container health check
             return self._send({"ok": True, "service": "hub"})
@@ -421,6 +518,8 @@ class Handler(BaseHTTPRequestHandler):
         u = urlparse(self.path)
         parts = [p for p in u.path.split("/") if p]
         q = parse_qs(u.query)
+        if parts and parts[0] == "beta":
+            return self._beta_get(parts)
         if parts and parts[0] == "auth":
             return self._auth_get(parts, q)
         if parts and parts[0] == "me":
@@ -438,14 +537,20 @@ class Handler(BaseHTTPRequestHandler):
             idx = _read()
             if parts == ["profiles"]:
                 rows = [_row(i, e) for i, e in idx.items()]
-                appid, text, sort = (q.get(k, [""])[0][:80] for k in ("appid", "q", "sort"))
+                appid, text, sort, tier, mpq = (q.get(k, [""])[0][:80] for k in ("appid", "q", "sort", "tier", "mp"))
+                if tier:
+                    rows = [r for r in rows if r["tier"] == tier]
+                if mpq == "1":
+                    rows = [r for r in rows if r["multiplayer"]]
                 if appid:
                     rows = [r for r in rows if r["steamAppId"] == appid]
                 if text:
                     t = text.lower()
-                    rows = [r for r in rows if t in r["title"].lower() or t in r["author"].lower()]
+                    rows = [r for r in rows if t in r["title"].lower() or t in r["author"].lower() or t in r["tagline"].lower()]
                 if sort == "featured":
                     rows = [r for r in rows if r["featured"]]
+                elif sort == "liked":
+                    rows.sort(key=lambda r: (-r["likes"], -r["downloads"]))
                 elif sort == "popular":
                     rows.sort(key=lambda r: -(r["downloads"] + 3 * r["likes"]))
                 else:
@@ -473,6 +578,8 @@ class Handler(BaseHTTPRequestHandler):
         if n < 0 or n > MAX_ZIP:
             return self._send({"error": "upload too large"}, 413)
         self._unread = n
+        if len(parts) == 4 and parts[:2] == ["admin", "beta"]:
+            return self._beta_put(parts, n)
         if parts and parts[0] in ("auth", "me"):
             return self._account_post(parts, n)
         if parts == ["profiles"]:

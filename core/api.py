@@ -7,7 +7,7 @@ import sys
 import zlib
 from pathlib import Path
 
-from . import ads, agents, autosend, stores, headset, updates, hub, launcher, legal, links, lobby, paths, prefs, profiles, prompt, recipe, runtime, scanner, settings, trust, version, vrinfo
+from . import ads, agents, autosend, connect, stores, headset, updates, hub, launcher, legal, links, lobby, paths, prefs, profiles, prompt, recipe, runtime, safety, scanner, settings, trust, version, vrinfo
 
 _STATE = {"games": None, "steam": None, "demo": False, "startup_link": None}
 
@@ -39,7 +39,7 @@ def _decorate(g):
     g = _with_vac(g)
     mine = profiles.list_profiles(g["appid"])
     vr = vrinfo.describe(g["appid"], g["path"])
-    return {**g, "vr": vr, "installed": recipe.is_installed(g["appid"]), "profileCount": len(mine),
+    return {**g, "vr": vr, "installed": recipe.is_installed(g["appid"]), "installedProfile": recipe.installed_profile(g["appid"]), "profileCount": len(mine),
             "customized": bool(mine) or not prefs.is_default(prefs.get(g["appid"]))
             if not g.get("demo") else False}
 
@@ -238,9 +238,38 @@ def discover_search(text):
     return rows
 
 
+def discover_browse(text="", appid="", sort="new", tier="", mp=False, mine=False):
+    """Search and filter every build on the hub. mine=True keeps only builds for games in this player's library."""
+    sort = sort if sort in ("new", "popular", "liked", "featured") else "new"
+    owned_games = {str(g["appid"]) for g in _load()}
+    rows = hub.browse(sort, str(appid or "") or None, str(text or "").strip()[:80] or None, str(tier or "") or None, bool(mp))
+    have = {p["slug"] for p in profiles.list_profiles()}
+    out = []
+    for r in rows:
+        r["owned"] = r["id"] in have
+        r["gameOwned"] = str(r["steamAppId"]) in owned_games
+        if mine and not r["gameOwned"]:
+            continue
+        out.append(r)
+    return {"profiles": out}
+
+
 def get_profile(pid):
     r = hub.get(pid)
     return {**r, "meta": profiles.load(r["slug"])}
+
+
+def apply_build(appid, slug):
+    """Put a downloaded build into the player's own copy of the game (tracked, undoable). Does not start the game."""
+    game = find_game(appid)
+    _ready(game)
+    meta = profiles.load(slug)
+    if str(meta.get("steamAppId")) != str(game["appid"]):
+        raise ValueError("this build is for a different game")
+    if not trust.is_trusted(slug, meta):
+        raise ValueError("TRUST_REQUIRED: this build ships third-party programs that will run with the game. Review and allow them first.")
+    r = install_profile(slug, appid)
+    return {"installed": r["installed"], "note": "Applied. Press Play to start it, or Remove the VR layer any time to restore the game."}
 
 
 def publish(slug):
@@ -432,6 +461,39 @@ def game_folders():
     return {"folders": settings.get("gameFolders", [])}
 
 
+def add_program(exe, rom=None, name=None, args=""):
+    """Add a game that is a program: an emulator with a game file, or any .exe. Launched directly, no shell, with the game file as its first argument."""
+    import shlex
+    p = Path(str(exe or "").strip().strip('"')).expanduser()
+    if not p.is_file() or p.suffix.lower() != ".exe":
+        raise ValueError("pick the program's .exe file")
+    r = Path(str(rom).strip().strip('"')).expanduser() if rom else None
+    if r is not None and not r.is_file():
+        raise ValueError("that game file doesn't exist: %s" % r)
+    try:
+        extra = shlex.split(str(args or ""), posix=False)
+    except ValueError:
+        raise ValueError("those extra arguments aren't valid")
+    extra = [a.strip('"') for a in extra]
+    if len(extra) > 20 or any(len(a) > 260 or any(ord(c) < 32 for c in a) for a in extra):
+        raise ValueError("too many or too long arguments")
+    label = safety.clean_text(name, 60) or (r.stem if r else p.stem)
+    pid = stores.gid("prog", "%s|%s" % (p.resolve(), r.resolve() if r else ""))
+    items = [x for x in settings.get("programs", []) if x.get("id") != pid]
+    if len(items) >= 200:
+        raise ValueError("that's a lot of programs: remove some first")
+    items.append({"id": pid, "name": label, "exe": str(p.resolve()), "rom": str(r.resolve()) if r else None, "args": extra})
+    settings.set("programs", items)
+    _load(True)
+    return {"added": pid, "name": label, "emulator": stores.emulator_of(p)}
+
+
+def remove_program(pid):
+    settings.set("programs", [x for x in settings.get("programs", []) if x.get("id") != pid])
+    _load(True)
+    return {"removed": pid}
+
+
 def add_game_folder(path):
     p = Path(str(path)).expanduser()
     if not p.is_dir():
@@ -459,13 +521,18 @@ def host(appid, slug, public=False, address=None):
     if not mp:
         raise ValueError("this profile has no multiplayer setup")
     lobby._call("/lobbies")  # fail early if the lobby service is unreachable
-    port = 25000 + (zlib.crc32(str(game["appid"]).encode()) % 1000)
+    port = lobby.free_port(25000 + (zlib.crc32(str(game["appid"]).encode()) % 1000))    # a port nothing else is using right now
     play(appid, slug, "host", None, port)
     spec = mp.get("address")
     addr = address or (lobby.find_address(spec, game) if spec else None)
+    net = lobby.private_network()
     if not addr:
-        return {"needAddress": True}
-    return {"code": lobby.open_lobby(appid, slug, meta["title"], mp["maxPlayers"], addr, public)["code"], "address": addr}
+        return {"needAddress": True, "suggest": net["ip"] + ":%d" % port if net else None, "network": net["name"] if net else None}
+    network = None
+    if not address:                                                        # a typed address is the player's own choice; a logged one may be home-only
+        addr, network = lobby.reachable(addr)
+    code = lobby.open_lobby(appid, slug, meta["title"], mp["maxPlayers"], addr, public)["code"]
+    return {"code": code, "address": addr, "network": network, "link": "https://plungevr.com/join/" + code}
 
 
 def publish_lobby(appid, slug, address, public=False):
@@ -474,20 +541,51 @@ def publish_lobby(appid, slug, address, public=False):
     return lobby.open_lobby(appid, slug, meta["title"], mp["maxPlayers"], address, public)
 
 
+def join_info(code):
+    """What a join code is for, so the app can fetch the build and ask for trust before joining: no address is returned."""
+    info = lobby.resolve(code)
+    game = next((g for g in _load() if g["appid"] == str(info["appid"])), None)
+    have = info["profile"] in [p["slug"] for p in profiles.list_profiles(info["appid"])]
+    return {"appid": str(info["appid"]), "profile": info["profile"], "title": info.get("title"), "ownsGame": bool(game),
+            "haveBuild": have, "gameName": game["name"] if game else None}
+
+
 def join(code):
     info = lobby.resolve(code)
     find_game(info["appid"])  # the joiner must own the game
     if info["profile"] not in [p["slug"] for p in profiles.list_profiles(info["appid"])]:
-        raise ValueError("you need the profile '%s' to join this game" % info["profile"])
-    return play(info["appid"], info["profile"], "join", info["address"])
+        raise ValueError("you need the build '%s' to join this game" % info["profile"])
+    mp = (profiles.load(info["profile"]).get("recipe") or {}).get("multiplayer") or {}
+    out = play(info["appid"], info["profile"], "join", info["address"])
+    if not any(mp.get(k) for k in ("joinArgs", "joinEnv", "joinFile", "joinUri")):    # only joinable from the game's own menu: hand over the address to paste
+        out["manualAddress"] = info["address"]
+    return out
 
 
 def lobbies(appid=None):
     return {"lobbies": lobby.list_open(appid)}
 
 
+def open_games():
+    """Public open games for every game, and how many private ones are running, for the home page."""
+    return lobby.counts(None)
+
+
 def stop_hosting(appid):
     return lobby.close_lobby(appid)
+
+
+def connect_status():
+    """Which AI tools are on this PC and whether Plunge's tool server is registered with each."""
+    return connect.status()
+
+
+def connect_tool(tool):
+    return connect.connect(str(tool))
+
+
+def disconnect_tool(tool):
+    return connect.disconnect(str(tool))
 
 
 def copy_text(text):

@@ -284,16 +284,54 @@ def steam_orphans(libs, known_installdirs):
     return out
 
 
+EMULATORS = {"dolphin": "GameCube / Wii", "pcsx2": "PlayStation 2", "rpcs3": "PlayStation 3", "duckstation": "PlayStation", "ppsspp": "PSP",
+             "vita3k": "PS Vita", "cemu": "Wii U", "yuzu": "Switch", "ryujinx": "Switch", "suyu": "Switch", "citra": "3DS", "lime3ds": "3DS",
+             "melonds": "DS", "desmume": "DS", "mgba": "Game Boy Advance", "retroarch": "many systems", "bizhawk": "many systems", "mesen": "NES / SNES",
+             "snes9x": "SNES", "project64": "Nintendo 64", "mupen64": "Nintendo 64", "flycast": "Dreamcast", "redream": "Dreamcast", "xemu": "Xbox",
+             "xenia": "Xbox 360", "ares": "many systems", "higan": "many systems", "mame": "arcade", "scummvm": "classic adventures", "dosbox": "DOS"}
+
+
+def emulator_of(exe):
+    """The console an emulator program is for ('GameCube / Wii'), or None when the program is not a known emulator."""
+    stem = Path(str(exe)).stem.lower().replace(" ", "").replace("-", "").replace("_", "")
+    for key, system in EMULATORS.items():
+        if stem.startswith(key) or key in stem:
+            return system
+    return None
+
+
+def programs():
+    """Games the player added as a program: an emulator plus a game file, or any program that is a game. Never scanned for, only added by hand."""
+    out = []
+    for p in settings.get("programs", []):
+        try:
+            exe = Path(p["exe"])
+            if not exe.is_file():
+                continue
+            rom = p.get("rom") or None
+            if rom and not Path(rom).is_file():
+                continue
+            system = emulator_of(exe)
+            args = ([rom] if rom else []) + list(p.get("args") or [])
+            out.append({"appid": p["id"], "name": p["name"], "path": str(exe.parent), "store": "Emulator" if system else "Program",
+                        "launch": {"kind": "exe", "exe": str(exe), "args": args}, "exeHint": str(exe), "rom": rom,
+                        "emulator": system, "program": True})
+        except (KeyError, TypeError, OSError):
+            continue
+    return out
+
+
 def all_extra(steam_libs, steam_installdirs, steam_paths):
-    games = steam_orphans(steam_libs, {d.lower() for d in steam_installdirs})
+    games = programs()                               # added by hand, so they come first (two game files can share one emulator folder)
+    games += steam_orphans(steam_libs, {d.lower() for d in steam_installdirs})
     games += epic() + gog() + ubisoft() + ea()
     known = list(steam_paths) + [g["path"] for g in games]
     games += installed_apps()
     known += [g["path"] for g in games]
     games += folders(known)
     seen, out = set(), []
-    for g in games:                                  # one entry per real folder
-        k = str(Path(g["path"]).resolve()).lower()
+    for g in games:                                  # one entry per real folder (and per game file, for programs)
+        k = str(Path(g["path"]).resolve()).lower() + ("|" + str(g.get("rom") or g["appid"]) if g.get("program") else "")
         if k not in seen:
             seen.add(k)
             out.append(g)

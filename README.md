@@ -6,6 +6,32 @@ A Windows desktop app. You pick a game you own; an AI agent (Claude Code, Codex)
 [universal-modder](https://github.com/rehan-remade/universal-modder), redesigns it for VR the way *you* want it,
 and saves a **profile**. Plunge installs it in one click, can remove it again, and lets friends join your session.
 
+## What Plunge does on your PC
+
+Plain words, so you can check them against the code. Automatic scanners flag any program that starts other programs and writes
+files; this is exactly what Plunge is for, and this section says where each thing happens.
+
+**It reads** the list of games you own (Steam's own library files, the Epic/GOG/Ubisoft/EA launcher records, the Windows list of
+installed programs, and folders you add) and looks inside a game's folder to find its engine and any anti-cheat. `core/scanner.py`, `core/stores.py`.
+
+**It writes** in only two places: its own data folder (`%LOCALAPPDATA%\Plunge`: settings, your builds, logs, and the backups it needs to undo
+an install) and, when you press Apply or Play on a build, the folder of that one game. Every file it adds is recorded and a replaced file is
+backed up first, so Remove puts the game back exactly. Destinations outside the game folder are refused. `core/recipe.py`, `core/safety.py`.
+
+**It starts programs** only when you ask: the game (through Steam, or the game's own program directly), an emulator with the game file you
+chose, the UEVR injector if you pick that route, and the AI agent you pick when you press Send. Every start is a program plus a list of arguments.
+No command is ever built as a string and handed to a shell. `core/launcher.py`, `core/agents.py`.
+
+**It talks to the internet** only to: `hub.plungevr.com` (Discover, sign-in, publishing), `lobby.plungevr.com` (multiplayer codes),
+`plungevr.com` (update check), Steam's store (whether a game has VR) and GitHub (the UEVR download). It never contacts a game's own servers.
+The app itself listens on no port.
+
+**It never** modifies a game that uses anti-cheat, runs code downloaded from a build without your approval (every third-party program a build
+ships is listed with its author, licence and SHA-256 and needs your OK), sends your files anywhere, or runs analytics.
+
+Details and the full list of protections: [SECURITY.md](SECURITY.md). The tests (`test_*.py`) check these promises, including that the shipped code
+contains no dynamic code execution and no shell calls.
+
 ## Run it
 
 - `dist\Plunge.exe`: the app (native window, no web server, listens on no port).
